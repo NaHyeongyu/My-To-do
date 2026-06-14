@@ -4,6 +4,7 @@ enum AppPage: String, CaseIterable, Identifiable {
     case timetable
     case tasks
     case routines
+    case streak
 
     var id: String { rawValue }
 
@@ -12,6 +13,7 @@ enum AppPage: String, CaseIterable, Identifiable {
         case .timetable: "Calendar"
         case .tasks: "Tasks"
         case .routines: "Routines"
+        case .streak: "Streak"
         }
     }
 
@@ -20,6 +22,7 @@ enum AppPage: String, CaseIterable, Identifiable {
         case .timetable: "calendar"
         case .tasks: "list.bullet"
         case .routines: "repeat"
+        case .streak: "chart.line.uptrend.xyaxis"
         }
     }
 }

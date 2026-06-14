@@ -390,7 +390,7 @@ private struct CalendarEventBlock: View {
         Button(action: onEdit) {
             HStack(alignment: .top, spacing: 5) {
                 if status.isResolved {
-                    Image(systemName: status == .done ? "checkmark.circle.fill" : "forward.end.circle.fill")
+                    Image(systemName: status == .done ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(MissionTheme.selectedText.opacity(0.86))
                         .padding(.top, 1)
@@ -416,9 +416,9 @@ private struct CalendarEventBlock: View {
         case .pending:
             MissionTheme.eventBackground
         case .done:
-            MissionTheme.eventBackground.opacity(0.62)
+            MissionTheme.success.opacity(0.78)
         case .skipped:
-            MissionTheme.tertiaryText.opacity(0.72)
+            MissionTheme.danger.opacity(0.78)
         }
     }
 }

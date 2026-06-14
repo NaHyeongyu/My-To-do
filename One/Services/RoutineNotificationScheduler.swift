@@ -10,7 +10,7 @@ struct RoutineNotificationSchedule: Sendable {
     let repeatWeekdayMask: Int
 
     init?(item: ScheduleItem) {
-        guard item.kind == .routine else {
+        guard item.kind == .routine, item.canScheduleRoutineNotifications() else {
             return nil
         }
 
@@ -23,8 +23,48 @@ struct RoutineNotificationSchedule: Sendable {
     }
 }
 
+enum RoutineNotificationAction {
+    static let categoryIdentifier = "routine-check-in"
+    static let routineIDKey = "routineID"
+    static let successIdentifier = "routine.success"
+    static let failIdentifier = "routine.fail"
+    static let snoozeIdentifier = "routine.snooze"
+    static let snoozeMinutes = 10
+
+    static func register(on center: UNUserNotificationCenter = .current()) {
+        let actions = [
+            UNNotificationAction(
+                identifier: successIdentifier,
+                title: "Success",
+                options: []
+            ),
+            UNNotificationAction(
+                identifier: failIdentifier,
+                title: "Fail",
+                options: [.destructive]
+            ),
+            UNNotificationAction(
+                identifier: snoozeIdentifier,
+                title: "Snooze 10m",
+                options: []
+            )
+        ]
+
+        let category = UNNotificationCategory(
+            identifier: categoryIdentifier,
+            actions: actions,
+            intentIdentifiers: [],
+            options: []
+        )
+
+        center.setNotificationCategories([category])
+    }
+}
+
 actor RoutineNotificationScheduler {
     static let shared = RoutineNotificationScheduler()
+
+    private static let soundName = UNNotificationSoundName("one_signal.wav")
 
     private let center = UNUserNotificationCenter.current()
     private let identifierPrefix = "routine-notification"
@@ -158,7 +198,9 @@ actor RoutineNotificationScheduler {
         let content = UNMutableNotificationContent()
         content.title = schedule.title
         content.body = schedule.notes.isEmpty ? "Routine starts now." : schedule.notes
-        content.sound = .default
+        content.categoryIdentifier = RoutineNotificationAction.categoryIdentifier
+        content.userInfo = [RoutineNotificationAction.routineIDKey: schedule.id.uuidString]
+        content.sound = UNNotificationSound(named: Self.soundName)
         return content
     }
 

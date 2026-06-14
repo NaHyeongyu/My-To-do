@@ -7,7 +7,6 @@ struct TimetablePageView: View {
     let onEdit: (ScheduleItem) -> Void
     let onMarkRoutineDone: (ScheduleItem, Date) -> Void
     let onSkipRoutine: (ScheduleItem, Date) -> Void
-    let onDelayRoutine: (ScheduleItem, Date) -> Void
 
     @State private var selectedDate = Calendar.current.startOfDay(for: .now)
     @State private var viewMode: TimetableViewMode = TimetableViewMode.storedValue()
@@ -91,6 +90,24 @@ struct TimetablePageView: View {
         return RoutineDayProgress(total: routines.count, done: doneCount, skipped: skippedCount)
     }
 
+    private var missionSummary: CalendarMissionSummary {
+        let plannedMinutes = routines.reduce(0) { $0 + $1.durationMinutes(calendar: calendar) }
+        let completedMinutes = routines.reduce(0) { total, routine in
+            let state = routineStates.state(for: routine, on: selectedDate, calendar: calendar)
+            return state?.status == .done ? total + routine.durationMinutes(calendar: calendar) : total
+        }
+        let openTaskCount = items
+            .oneOffTasksForToday(selectedDate, calendar: calendar)
+            .filter { !$0.isCompleted }
+            .count
+
+        return CalendarMissionSummary(
+            plannedMinutes: plannedMinutes,
+            completedMinutes: completedMinutes,
+            openTaskCount: openTaskCount
+        )
+    }
+
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             MissionTheme.panel
@@ -142,18 +159,15 @@ struct TimetablePageView: View {
                             CalendarNowModeCard(
                                 candidate: nowCandidate(at: timeline.date),
                                 progress: routineProgress,
+                                summary: missionSummary,
                                 onAddRoutine: {
                                     onAddRoutine(selectedDayStart)
                                 },
-                                onEdit: onEdit,
                                 onDone: {
                                     onMarkRoutineDone($0, selectedDayStart)
                                 },
                                 onSkip: {
                                     onSkipRoutine($0, selectedDayStart)
-                                },
-                                onDelay: {
-                                    onDelayRoutine($0, selectedDayStart)
                                 }
                             )
                         }

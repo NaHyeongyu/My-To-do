@@ -13,6 +13,8 @@ final class ScheduleItem: Identifiable {
     var startTime: Date?
     var endTime: Date?
     var repeatWeekdayMask: Int
+    var activeFrom: Date?
+    var activeUntil: Date?
 
     init(
         id: UUID = UUID(),
@@ -24,7 +26,9 @@ final class ScheduleItem: Identifiable {
         completedAt: Date? = nil,
         startTime: Date? = nil,
         endTime: Date? = nil,
-        repeatWeekdayMask: Int = RepeatWeekdayMask.everyDay
+        repeatWeekdayMask: Int = RepeatWeekdayMask.everyDay,
+        activeFrom: Date? = nil,
+        activeUntil: Date? = nil
     ) {
         self.id = id
         self.kindRawValue = kind.rawValue
@@ -36,6 +40,8 @@ final class ScheduleItem: Identifiable {
         self.startTime = startTime
         self.endTime = endTime
         self.repeatWeekdayMask = repeatWeekdayMask
+        self.activeFrom = activeFrom
+        self.activeUntil = activeUntil
     }
 }
 
@@ -54,10 +60,36 @@ extension ScheduleItem {
     }
 
     func repeats(on date: Date, calendar: Calendar = .current) -> Bool {
-        guard kind == .routine else { return false }
+        guard kind == .routine, isRoutineActive(on: date, calendar: calendar) else { return false }
         let weekdayNumber = calendar.component(.weekday, from: date)
         guard let weekday = RepeatWeekday(rawValue: weekdayNumber) else { return false }
         return RepeatWeekdayMask.contains(weekday, in: repeatWeekdayMask)
+    }
+
+    func isRoutineActive(on date: Date, calendar: Calendar = .current) -> Bool {
+        guard kind == .routine else { return false }
+
+        let dayStart = calendar.startOfDay(for: date)
+
+        if let activeFrom, dayStart < calendar.startOfDay(for: activeFrom) {
+            return false
+        }
+
+        if let activeUntil, dayStart >= calendar.startOfDay(for: activeUntil) {
+            return false
+        }
+
+        return true
+    }
+
+    func canScheduleRoutineNotifications(now: Date = .now, calendar: Calendar = .current) -> Bool {
+        guard kind == .routine else { return false }
+
+        if let activeUntil, calendar.startOfDay(for: activeUntil) <= calendar.startOfDay(for: now) {
+            return false
+        }
+
+        return true
     }
 
     func isTodayTask(on date: Date = .now, calendar: Calendar = .current) -> Bool {

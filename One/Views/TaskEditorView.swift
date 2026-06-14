@@ -169,28 +169,52 @@ struct ScheduleItemEditorView: View {
         let routineRepeatWeekdayMask = isDateAnchoredRoutine
             ? 0
             : (repeatWeekdayMask == 0 ? RepeatWeekdayMask.everyDay : repeatWeekdayMask)
+        let todayStart = calendar.startOfDay(for: .now)
 
         if let item {
-            item.kind = kind
-            item.title = trimmedTitle
-            item.notes = trimmedNotes
-
-            switch kind {
-            case .routine:
-                item.taskDate = routineDate
-                item.completedAt = nil
-                item.startTime = snappedStartTime
-                item.endTime = snappedEndTime
-                item.repeatWeekdayMask = routineRepeatWeekdayMask
-            case .task:
-                item.taskDate = taskDate
-                item.startTime = nil
-                item.endTime = nil
-                item.repeatWeekdayMask = 0
+            if shouldCreateRoutineVersion(for: item, todayStart: todayStart, calendar: calendar) {
+                item.activeUntil = todayStart
                 notificationCancellationID = item.id
-            }
 
-            notificationSchedule = RoutineNotificationSchedule(item: item)
+                let newItem = ScheduleItem(
+                    kind: .routine,
+                    title: trimmedTitle,
+                    notes: trimmedNotes,
+                    taskDate: nil,
+                    startTime: snappedStartTime,
+                    endTime: snappedEndTime,
+                    repeatWeekdayMask: routineRepeatWeekdayMask,
+                    activeFrom: todayStart
+                )
+                modelContext.insert(newItem)
+                moveCurrentRoutineStates(from: item.id, to: newItem.id, startingAt: todayStart)
+                notificationSchedule = RoutineNotificationSchedule(item: newItem)
+            } else {
+                item.kind = kind
+                item.title = trimmedTitle
+                item.notes = trimmedNotes
+
+                switch kind {
+                case .routine:
+                    item.taskDate = routineDate
+                    item.completedAt = nil
+                    item.startTime = snappedStartTime
+                    item.endTime = snappedEndTime
+                    item.repeatWeekdayMask = routineRepeatWeekdayMask
+                    item.activeFrom = routineDate == nil ? (item.activeFrom ?? todayStart) : nil
+                    item.activeUntil = nil
+                case .task:
+                    item.taskDate = taskDate
+                    item.startTime = nil
+                    item.endTime = nil
+                    item.repeatWeekdayMask = 0
+                    item.activeFrom = nil
+                    item.activeUntil = nil
+                    notificationCancellationID = item.id
+                }
+
+                notificationSchedule = RoutineNotificationSchedule(item: item)
+            }
         } else {
             let newItem = ScheduleItem(
                 kind: kind,
@@ -199,7 +223,8 @@ struct ScheduleItemEditorView: View {
                 taskDate: kind == .task ? taskDate : routineDate,
                 startTime: kind == .routine ? snappedStartTime : nil,
                 endTime: kind == .routine ? snappedEndTime : nil,
-                repeatWeekdayMask: kind == .routine ? routineRepeatWeekdayMask : 0
+                repeatWeekdayMask: kind == .routine ? routineRepeatWeekdayMask : 0,
+                activeFrom: kind == .routine && routineDate == nil ? todayStart : nil
             )
             modelContext.insert(newItem)
             notificationSchedule = RoutineNotificationSchedule(item: newItem)
@@ -211,16 +236,45 @@ struct ScheduleItemEditorView: View {
 
     private func updateRoutineNotification(schedule: RoutineNotificationSchedule?, cancellationID: UUID?) {
         Task {
-            if let schedule {
-                await RoutineNotificationScheduler.shared.scheduleNotifications(for: schedule)
-            } else if let cancellationID {
+            if let cancellationID {
                 await RoutineNotificationScheduler.shared.cancelNotifications(for: cancellationID)
             }
+
+            if let schedule {
+                await RoutineNotificationScheduler.shared.scheduleNotifications(for: schedule)
+            }
+        }
+    }
+
+    private func shouldCreateRoutineVersion(
+        for item: ScheduleItem,
+        todayStart: Date,
+        calendar: Calendar
+    ) -> Bool {
+        guard kind == .routine, !isDateAnchoredRoutine, item.taskDate == nil else {
+            return false
+        }
+
+        guard let activeFrom = item.activeFrom else {
+            return true
+        }
+
+        return calendar.startOfDay(for: activeFrom) < todayStart
+    }
+
+    private func moveCurrentRoutineStates(from oldID: UUID, to newID: UUID, startingAt dayStart: Date) {
+        let descriptor = FetchDescriptor<RoutineOccurrenceState>()
+        guard let states = try? modelContext.fetch(descriptor) else {
+            return
+        }
+
+        for state in states where state.routineID == oldID && state.dayStart >= dayStart {
+            state.routineID = newID
         }
     }
 }
 
 #Preview {
     ScheduleItemEditorView(kind: .routine)
-        .modelContainer(for: [ScheduleItem.self], inMemory: true)
+        .modelContainer(for: [ScheduleItem.self, RoutineOccurrenceState.self], inMemory: true)
 }

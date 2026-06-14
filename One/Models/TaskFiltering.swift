@@ -59,9 +59,12 @@ extension Array where Element == ScheduleItem {
     }
 
     func routines(repeating weekday: RepeatWeekday, calendar: Calendar = .current) -> [ScheduleItem] {
-        filter {
+        let today = calendar.startOfDay(for: .now)
+
+        return filter {
             $0.kind == .routine
                 && $0.taskDate == nil
+                && $0.isRoutineActive(on: today, calendar: calendar)
                 && RepeatWeekdayMask.contains(weekday, in: $0.repeatWeekdayMask)
         }
             .sorted { lhs, rhs in
@@ -72,7 +75,7 @@ extension Array where Element == ScheduleItem {
 
     func routines(on date: Date, calendar: Calendar = .current) -> [ScheduleItem] {
         filter { item in
-            guard item.kind == .routine else { return false }
+            guard item.kind == .routine, item.isRoutineActive(on: date, calendar: calendar) else { return false }
 
             if let taskDate = item.taskDate {
                 return calendar.isDate(taskDate, inSameDayAs: date)

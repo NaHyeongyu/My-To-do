@@ -11,9 +11,9 @@ enum MissionTheme {
     static let eventBackground = Color(uiColor: .label)
     static let selectedText = Color(uiColor: .systemBackground)
     static let separator = Color(uiColor: .separator)
-    static let success = Color(uiColor: .label)
+    static let success = Color(uiColor: .systemGreen)
     static let warning = Color(uiColor: .secondaryLabel)
-    static let danger = Color(uiColor: .label)
+    static let danger = Color(uiColor: .systemRed)
 
     static let radius: CGFloat = 8
 }

@@ -47,20 +47,23 @@ struct TodayOverviewWidgetView: View {
     }
 
     var body: some View {
-        switch family {
-        case .systemSmall:
-            smallHomeView
-        case .systemMedium:
-            mediumHomeView
-        case .accessoryInline:
-            inlineLockView
-        case .accessoryCircular:
-            circularLockView
-        case .accessoryRectangular:
-            rectangularLockView
-        default:
-            mediumHomeView
+        Group {
+            switch family {
+            case .systemSmall:
+                smallHomeView
+            case .systemMedium:
+                mediumHomeView
+            case .accessoryInline:
+                inlineLockView
+            case .accessoryCircular:
+                circularLockView
+            case .accessoryRectangular:
+                rectangularLockView
+            default:
+                mediumHomeView
+            }
         }
+        .widgetURL(OneWidgetDeepLink.calendar)
     }
 
     private var smallHomeView: some View {
@@ -200,9 +203,181 @@ struct TodayOverviewWidget: Widget {
     }
 }
 
+struct RoutineCheckInWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+
+    let entry: TodayOverviewEntry
+
+    private var routine: WidgetRoutineItem? {
+        entry.snapshot.routines.first { !$0.outcome.isResolved } ?? entry.snapshot.routines.first
+    }
+
+    var body: some View {
+        Group {
+            switch family {
+            case .systemMedium:
+                mediumView
+            case .accessoryRectangular:
+                accessoryView
+            default:
+                smallView
+            }
+        }
+        .widgetURL(OneWidgetDeepLink.calendar)
+    }
+
+    private var smallView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            header
+
+            if let routine {
+                routineSummary(routine)
+            } else {
+                emptyState
+            }
+
+            Spacer(minLength: 0)
+
+            actionLinks
+        }
+        .containerBackground(.fill.tertiary, for: .widget)
+    }
+
+    private var mediumView: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                header
+
+                if let routine {
+                    routineSummary(routine)
+                } else {
+                    emptyState
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            VStack(spacing: 8) {
+                actionLinks
+            }
+            .frame(width: 126)
+        }
+        .containerBackground(.fill.tertiary, for: .widget)
+    }
+
+    private var accessoryView: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let routine {
+                Text(routine.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text("\(routine.startTimeText) · \(routine.outcome.title)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            } else {
+                Text("No routine")
+                    .font(.headline)
+                    .lineLimit(1)
+                Text("Open One")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .containerBackground(.fill.tertiary, for: .widget)
+    }
+
+    private var header: some View {
+        Label("Check-in", systemImage: "1.circle.fill")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
+    private func routineSummary(_ routine: WidgetRoutineItem) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(routine.title)
+                .font(.headline.weight(.semibold))
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+
+            HStack(spacing: 6) {
+                Text("\(routine.startTimeText) - \(routine.endTimeText)")
+                    .font(.caption.weight(.medium).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                if routine.outcome.isResolved {
+                    Label(routine.outcome.title, systemImage: routine.outcome.symbolName)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(routine.outcome == .success ? .green : .red)
+                        .labelStyle(.titleAndIcon)
+                }
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("No open routine")
+                .font(.headline.weight(.semibold))
+                .lineLimit(1)
+
+            Text("Open Calendar")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var actionLinks: some View {
+        HStack(spacing: 8) {
+            Link(destination: OneWidgetDeepLink.fail) {
+                Label("Fail", systemImage: "xmark")
+                    .font(.caption.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .padding(.vertical, 8)
+                    .foregroundStyle(.white)
+                    .background(.red, in: Capsule())
+            }
+
+            Link(destination: OneWidgetDeepLink.success) {
+                Label("Success", systemImage: "checkmark")
+                    .font(.caption.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .padding(.vertical, 8)
+                    .foregroundStyle(.white)
+                    .background(.green, in: Capsule())
+            }
+        }
+        .labelStyle(.titleAndIcon)
+    }
+}
+
+struct RoutineCheckInWidget: Widget {
+    let kind = "RoutineCheckInWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: TodayOverviewProvider()) { entry in
+            RoutineCheckInWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Routine Check-in")
+        .description("Quickly mark the current routine as fail or success.")
+        .supportedFamilies([
+            .systemSmall,
+            .systemMedium,
+            .accessoryRectangular
+        ])
+    }
+}
+
 @main
 struct OneWidgetsBundle: WidgetBundle {
     var body: some Widget {
         TodayOverviewWidget()
+        RoutineCheckInWidget()
     }
 }

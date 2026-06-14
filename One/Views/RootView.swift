@@ -23,6 +23,10 @@ struct RootView: View {
             page(for: .routines)
                 .tabItem { Label(AppPage.routines.title, systemImage: AppPage.routines.symbolName) }
                 .tag(AppPage.routines)
+
+            page(for: .streak)
+                .tabItem { Label(AppPage.streak.title, systemImage: AppPage.streak.symbolName) }
+                .tag(AppPage.streak)
         }
         .tint(MissionTheme.accent)
         .sheet(item: $editorMode) { mode in
@@ -43,10 +47,13 @@ struct RootView: View {
         .onChange(of: routineNotificationSignature) { _, _ in
             syncRoutineNotificationsIfAuthorized()
         }
+        .onOpenURL { url in
+            handleDeepLink(url)
+        }
     }
 
     private var widgetSnapshotSignature: String {
-        items
+        let itemSignature = items
             .map { item in
                 [
                     item.id.uuidString,
@@ -57,14 +64,29 @@ struct RootView: View {
                     item.completedAt?.timeIntervalSince1970.description ?? "",
                     item.startTime?.timeIntervalSince1970.description ?? "",
                     item.endTime?.timeIntervalSince1970.description ?? "",
-                    item.repeatWeekdayMask.description
+                    item.repeatWeekdayMask.description,
+                    item.activeFrom?.timeIntervalSince1970.description ?? "",
+                    item.activeUntil?.timeIntervalSince1970.description ?? ""
                 ].joined(separator: "|")
             }
             .joined(separator: ";")
+        let stateSignature = routineStates
+            .map { state in
+                [
+                    state.routineID.uuidString,
+                    state.dayStart.timeIntervalSince1970.description,
+                    state.statusRawValue,
+                    state.delayMinutes.description
+                ].joined(separator: "|")
+            }
+            .joined(separator: ";")
+
+        return "\(itemSignature)#\(stateSignature)"
     }
 
-    private func updateWidgetSnapshot() {
-        WidgetSnapshotWriter.save(items: items)
+    private func updateWidgetSnapshot(replacing updatedState: RoutineOccurrenceState? = nil) {
+        let states = routineStatesForWidget(replacing: updatedState)
+        WidgetSnapshotWriter.save(items: items, routineStates: states)
     }
 
     private var routineNotificationSignature: String {
@@ -77,7 +99,9 @@ struct RootView: View {
                     item.notes,
                     item.taskDate?.timeIntervalSince1970.description ?? "",
                     item.startTime?.timeIntervalSince1970.description ?? "",
-                    item.repeatWeekdayMask.description
+                    item.repeatWeekdayMask.description,
+                    item.activeFrom?.timeIntervalSince1970.description ?? "",
+                    item.activeUntil?.timeIntervalSince1970.description ?? ""
                 ].joined(separator: "|")
             }
             .joined(separator: ";")
@@ -91,11 +115,12 @@ struct RootView: View {
         }
     }
 
+    @discardableResult
     private func upsertRoutineState(
         for routine: ScheduleItem,
         on date: Date,
         status: RoutineOccurrenceStatus
-    ) {
+    ) -> RoutineOccurrenceState {
         let dayStart = Calendar.current.startOfDay(for: date)
         let state = routineStates.state(for: routine, on: dayStart) ?? {
             let newState = RoutineOccurrenceState(routineID: routine.id, dayStart: dayStart)
@@ -105,20 +130,102 @@ struct RootView: View {
 
         state.status = status
         try? modelContext.save()
+        updateWidgetSnapshot(replacing: state)
+        return state
     }
 
-    private func delayRoutine(_ routine: ScheduleItem, on date: Date, by minutes: Int) {
-        let dayStart = Calendar.current.startOfDay(for: date)
-        let state = routineStates.state(for: routine, on: dayStart) ?? {
-            let newState = RoutineOccurrenceState(routineID: routine.id, dayStart: dayStart)
-            modelContext.insert(newState)
-            return newState
-        }()
+    private func routineStatesForWidget(replacing updatedState: RoutineOccurrenceState?) -> [RoutineOccurrenceState] {
+        guard let updatedState else {
+            return routineStates
+        }
 
-        state.status = .pending
-        state.delayMinutes = min(180, max(0, state.delayMinutes + minutes))
-        state.updatedAt = .now
-        try? modelContext.save()
+        return routineStates.filter { state in
+            state.routineID != updatedState.routineID
+                || !Calendar.current.isDate(state.dayStart, inSameDayAs: updatedState.dayStart)
+        } + [updatedState]
+    }
+
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme?.lowercased() == "one" else {
+            return
+        }
+
+        switch url.host?.lowercased() {
+        case "calendar", "timetable":
+            selectedPage = .timetable
+            applyWidgetOutcomeIfNeeded(from: url)
+        case "tasks":
+            selectedPage = .tasks
+        case "routines":
+            selectedPage = .routines
+        case "streak":
+            selectedPage = .streak
+        default:
+            selectedPage = .timetable
+        }
+    }
+
+    private func applyWidgetOutcomeIfNeeded(from url: URL) {
+        guard
+            let outcomeValue = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?
+                .first(where: { $0.name == "outcome" })?
+                .value?
+                .lowercased()
+        else {
+            return
+        }
+
+        let status: RoutineOccurrenceStatus
+        switch outcomeValue {
+        case "success":
+            status = .done
+        case "fail":
+            status = .skipped
+        default:
+            return
+        }
+
+        guard let routine = routineForWidgetOutcome() else {
+            return
+        }
+
+        upsertRoutineState(for: routine, on: .now, status: status)
+    }
+
+    private func routineForWidgetOutcome(now: Date = .now, calendar: Calendar = .current) -> ScheduleItem? {
+        let today = calendar.startOfDay(for: now)
+        let currentMinute = calendar.minuteOfDay(for: now)
+        let candidates: [(routine: ScheduleItem, startMinute: Int, endMinute: Int)] = items
+            .routines(on: today, calendar: calendar)
+            .compactMap { routine in
+                let state = routineStates.state(for: routine, on: today, calendar: calendar)
+                guard state?.isResolved != true else {
+                    return nil
+                }
+
+                let delayMinutes = state?.delayMinutes ?? 0
+                let startMinute = calendar.minuteOfDay(for: routine.startTime ?? today) + delayMinutes
+                let endMinute = startMinute + max(5, routine.durationMinutes(calendar: calendar))
+                return (routine, startMinute, endMinute)
+            }
+
+        if let active = candidates
+            .filter({ $0.startMinute <= currentMinute && currentMinute < $0.endMinute })
+            .min(by: { $0.endMinute < $1.endMinute }) {
+            return active.routine
+        }
+
+        if let next = candidates
+            .filter({ $0.startMinute >= currentMinute })
+            .min(by: { $0.startMinute < $1.startMinute }) {
+            return next.routine
+        }
+
+        return candidates
+            .filter { $0.endMinute <= currentMinute }
+            .max(by: { $0.endMinute < $1.endMinute })?
+            .routine
     }
 
     @ViewBuilder
@@ -158,9 +265,6 @@ struct RootView: View {
                 },
                 onSkipRoutine: { routine, date in
                     upsertRoutineState(for: routine, on: date, status: .skipped)
-                },
-                onDelayRoutine: { routine, date in
-                    delayRoutine(routine, on: date, by: 10)
                 }
             )
         case .tasks:
@@ -171,6 +275,11 @@ struct RootView: View {
             RoutinePlannerPageView(
                 items: items,
                 onEdit: { editorMode = .edit($0) }
+            )
+        case .streak:
+            StreakPageView(
+                items: items,
+                routineStates: routineStates
             )
         }
     }

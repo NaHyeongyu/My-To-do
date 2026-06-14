@@ -14,6 +14,7 @@
 		B10001032C1C0001000A1001 /* TasksPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000032C1C0001000A1001 /* TasksPageView.swift */; };
 		B10001042C1C0001000A1001 /* RoutinePlannerPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000042C1C0001000A1001 /* RoutinePlannerPageView.swift */; };
 		B10001072C1C0001000A1001 /* TimetableSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000072C1C0001000A1001 /* TimetableSupport.swift */; };
+		B100010A2C1C0001000A1001 /* StreakPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000A2C1C0001000A1001 /* StreakPageView.swift */; };
 		B200010A2C1C0001000A1001 /* TimelineViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000A2C1C0001000A1001 /* TimelineViews.swift */; };
 		B20001012C1C0001000A1001 /* ScheduleKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000012C1C0001000A1001 /* ScheduleKind.swift */; };
 		B20001022C1C0001000A1001 /* RepeatWeekday.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000022C1C0001000A1001 /* RepeatWeekday.swift */; };
@@ -40,6 +41,7 @@
 		D10001022C1E0001000A1001 /* NotificationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000022C1E0001000A1001 /* NotificationDelegate.swift */; };
 		C00201012C1D0001000A1001 /* OneWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00200012C1D0001000A1001 /* OneWidgets.swift */; };
 		C00201032C1D0001000A1001 /* OneWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = C00200042C1D0001000A1001 /* OneWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C00301012C200001000A1001 /* one_signal.wav in Resources */ = {isa = PBXBuildFile; fileRef = C00300012C200001000A1001 /* one_signal.wav */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,6 +77,7 @@
 		B10000032C1C0001000A1001 /* TasksPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TasksPageView.swift; sourceTree = "<group>"; };
 		B10000042C1C0001000A1001 /* RoutinePlannerPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutinePlannerPageView.swift; sourceTree = "<group>"; };
 		B10000072C1C0001000A1001 /* TimetableSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimetableSupport.swift; sourceTree = "<group>"; };
+		B100000A2C1C0001000A1001 /* StreakPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreakPageView.swift; sourceTree = "<group>"; };
 		B20000012C1C0001000A1001 /* ScheduleKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleKind.swift; sourceTree = "<group>"; };
 		B20000022C1C0001000A1001 /* RepeatWeekday.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepeatWeekday.swift; sourceTree = "<group>"; };
 		B200000B2C1C0001000A1001 /* RoutineOccurrenceState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineOccurrenceState.swift; sourceTree = "<group>"; };
@@ -97,12 +100,14 @@
 		C00100012C1D0001000A1001 /* WidgetSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotStore.swift; sourceTree = "<group>"; };
 		C00100022C1D0001000A1001 /* WidgetSnapshotWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotWriter.swift; sourceTree = "<group>"; };
 		C00100032C1D0001000A1001 /* One.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = One.entitlements; sourceTree = "<group>"; };
+		C00100042C1D0001000A1001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D10000012C1E0001000A1001 /* RoutineNotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineNotificationScheduler.swift; sourceTree = "<group>"; };
 		D10000022C1E0001000A1001 /* NotificationDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationDelegate.swift; sourceTree = "<group>"; };
 		C00200012C1D0001000A1001 /* OneWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneWidgets.swift; sourceTree = "<group>"; };
 		C00200022C1D0001000A1001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		C00200032C1D0001000A1001 /* OneWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OneWidgets.entitlements; sourceTree = "<group>"; };
 		C00200042C1D0001000A1001 /* OneWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OneWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C00300012C200001000A1001 /* one_signal.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = one_signal.wav; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -146,6 +151,7 @@
 			isa = PBXGroup;
 			children = (
 				2A2F5F302C1C0001000A1001 /* OneApp.swift */,
+				C00100042C1D0001000A1001 /* Info.plist */,
 				C00100022C1D0001000A1001 /* WidgetSnapshotWriter.swift */,
 				C00100032C1D0001000A1001 /* One.entitlements */,
 				D10002012C1E0001000A1001 /* Services */,
@@ -153,6 +159,7 @@
 				B20002012C1C0001000A1001 /* Navigation */,
 				2A2F5F152C1C0001000A1001 /* Views */,
 				B20002022C1C0001000A1001 /* DesignSystem */,
+				C00302012C200001000A1001 /* Sounds */,
 				2A2F5F392C1C0001000A1001 /* Assets.xcassets */,
 			);
 			path = One;
@@ -179,6 +186,7 @@
 				B10000032C1C0001000A1001 /* TasksPageView.swift */,
 				E10000032C1F0001000A1001 /* CompletedTasksPageView.swift */,
 				B10000042C1C0001000A1001 /* RoutinePlannerPageView.swift */,
+				B100000A2C1C0001000A1001 /* StreakPageView.swift */,
 				B10000072C1C0001000A1001 /* TimetableSupport.swift */,
 				B20002032C1C0001000A1001 /* Common */,
 				2A2F5F332C1C0001000A1001 /* TodoRowView.swift */,
@@ -243,6 +251,14 @@
 				C00200032C1D0001000A1001 /* OneWidgets.entitlements */,
 			);
 			path = OneWidgets;
+			sourceTree = "<group>";
+		};
+		C00302012C200001000A1001 /* Sounds */ = {
+			isa = PBXGroup;
+			children = (
+				C00300012C200001000A1001 /* one_signal.wav */,
+			);
+			path = Sounds;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -327,6 +343,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2A2F5F492C1C0001000A1001 /* Assets.xcassets in Resources */,
+				C00301012C200001000A1001 /* one_signal.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -351,6 +368,7 @@
 				B10001032C1C0001000A1001 /* TasksPageView.swift in Sources */,
 				B10001042C1C0001000A1001 /* RoutinePlannerPageView.swift in Sources */,
 				B10001072C1C0001000A1001 /* TimetableSupport.swift in Sources */,
+				B100010A2C1C0001000A1001 /* StreakPageView.swift in Sources */,
 				B20001012C1C0001000A1001 /* ScheduleKind.swift in Sources */,
 				B20001022C1C0001000A1001 /* RepeatWeekday.swift in Sources */,
 				B200010B2C1C0001000A1001 /* RoutineOccurrenceState.swift in Sources */,
@@ -521,13 +539,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = One;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = One/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -555,13 +568,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = One;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = One/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

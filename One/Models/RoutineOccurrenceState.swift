@@ -9,8 +9,8 @@ enum RoutineOccurrenceStatus: String, CaseIterable {
     var title: String {
         switch self {
         case .pending: "Pending"
-        case .done: "Done"
-        case .skipped: "Skipped"
+        case .done: "Success"
+        case .skipped: "Fail"
         }
     }
 

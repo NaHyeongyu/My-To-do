@@ -143,7 +143,25 @@ struct RoutineDayProgress {
             return "No routines"
         }
 
-        return "\(pending) open · \(done) done · \(skipped) skipped"
+        return "\(pending) open · \(done) success · \(skipped) fail"
+    }
+}
+
+struct CalendarMissionSummary {
+    let plannedMinutes: Int
+    let completedMinutes: Int
+    let openTaskCount: Int
+
+    var plannedText: String {
+        plannedMinutes.readableDuration
+    }
+
+    var completedText: String {
+        completedMinutes.readableDuration
+    }
+
+    var openTaskText: String {
+        "\(openTaskCount)"
     }
 }
 
@@ -184,15 +202,15 @@ struct RoutineNowCandidate: Identifiable {
 struct CalendarNowModeCard: View {
     let candidate: RoutineNowCandidate?
     let progress: RoutineDayProgress
+    let summary: CalendarMissionSummary
     let onAddRoutine: () -> Void
-    let onEdit: (ScheduleItem) -> Void
     let onDone: (ScheduleItem) -> Void
     let onSkip: (ScheduleItem) -> Void
-    let onDelay: (ScheduleItem) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
+            missionMetrics
 
             if let candidate {
                 candidateContent(candidate)
@@ -227,6 +245,14 @@ struct CalendarNowModeCard: View {
 
             ProgressView(value: progress.fraction)
                 .tint(MissionTheme.accent)
+        }
+    }
+
+    private var missionMetrics: some View {
+        HStack(spacing: 8) {
+            MissionMetricPill(title: "Planned", value: summary.plannedText)
+            MissionMetricPill(title: "Done", value: summary.completedText)
+            MissionMetricPill(title: "Tasks", value: summary.openTaskText)
         }
     }
 
@@ -270,40 +296,29 @@ struct CalendarNowModeCard: View {
     @ViewBuilder
     private func actionRow(_ candidate: RoutineNowCandidate) -> some View {
         HStack(spacing: 8) {
-            if candidate.phase != .next {
-                Button {
-                    onDone(candidate.item)
-                } label: {
-                    Label("Done", systemImage: "checkmark")
-                        .frame(maxWidth: .infinity)
-                }
-                .missionLiquidButton(.prominent)
-            }
-
-            Button {
-                onDelay(candidate.item)
-            } label: {
-                Label("10m", systemImage: "clock.arrow.circlepath")
-                    .frame(maxWidth: .infinity)
-            }
-            .missionLiquidButton()
-
             Button {
                 onSkip(candidate.item)
             } label: {
-                Label("Skip", systemImage: "forward.end")
+                Label("Fail", systemImage: "xmark")
                     .frame(maxWidth: .infinity)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
             }
-            .missionLiquidButton()
+            .missionLiquidButton(.prominent)
+            .tint(MissionTheme.danger)
+            .accessibilityLabel("Mark routine as fail")
 
             Button {
-                onEdit(candidate.item)
+                onDone(candidate.item)
             } label: {
-                Image(systemName: "pencil")
-                    .frame(width: 36, height: 32)
+                Label("Success", systemImage: "checkmark")
+                    .frame(maxWidth: .infinity)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
             }
-            .missionLiquidButton()
-            .accessibilityLabel("Edit routine")
+            .missionLiquidButton(.prominent)
+            .tint(MissionTheme.success)
+            .accessibilityLabel("Mark routine as success")
         }
         .font(.caption.weight(.semibold))
         .buttonBorderShape(.capsule)
@@ -333,5 +348,30 @@ struct CalendarNowModeCard: View {
             .buttonBorderShape(.circle)
             .accessibilityLabel("Add routine")
         }
+    }
+}
+
+private struct MissionMetricPill: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(value)
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(MissionTheme.graphite)
+                .lineLimit(1)
+                .minimumScaleFactor(0.76)
+
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(MissionTheme.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity)
+        .background(MissionTheme.separator.opacity(0.12), in: Capsule(style: .continuous))
     }
 }
