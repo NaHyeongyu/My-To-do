@@ -2,7 +2,10 @@ import SwiftData
 import SwiftUI
 
 struct RootView: View {
+    @Environment(\.modelContext) private var modelContext
+
     @Query(sort: \ScheduleItem.createdAt, order: .reverse) private var items: [ScheduleItem]
+    @Query(sort: \RoutineOccurrenceState.updatedAt, order: .reverse) private var routineStates: [RoutineOccurrenceState]
 
     @State private var selectedPage: AppPage = .timetable
     @State private var editorMode: EditorMode?
@@ -88,6 +91,36 @@ struct RootView: View {
         }
     }
 
+    private func upsertRoutineState(
+        for routine: ScheduleItem,
+        on date: Date,
+        status: RoutineOccurrenceStatus
+    ) {
+        let dayStart = Calendar.current.startOfDay(for: date)
+        let state = routineStates.state(for: routine, on: dayStart) ?? {
+            let newState = RoutineOccurrenceState(routineID: routine.id, dayStart: dayStart)
+            modelContext.insert(newState)
+            return newState
+        }()
+
+        state.status = status
+        try? modelContext.save()
+    }
+
+    private func delayRoutine(_ routine: ScheduleItem, on date: Date, by minutes: Int) {
+        let dayStart = Calendar.current.startOfDay(for: date)
+        let state = routineStates.state(for: routine, on: dayStart) ?? {
+            let newState = RoutineOccurrenceState(routineID: routine.id, dayStart: dayStart)
+            modelContext.insert(newState)
+            return newState
+        }()
+
+        state.status = .pending
+        state.delayMinutes = min(180, max(0, state.delayMinutes + minutes))
+        state.updatedAt = .now
+        try? modelContext.save()
+    }
+
     @ViewBuilder
     private func page(for page: AppPage) -> some View {
         NavigationStack {
@@ -117,8 +150,18 @@ struct RootView: View {
         case .timetable:
             TimetablePageView(
                 items: items,
+                routineStates: routineStates,
                 onAddRoutine: { editorMode = .new(.routine, $0) },
-                onEdit: { editorMode = .edit($0) }
+                onEdit: { editorMode = .edit($0) },
+                onMarkRoutineDone: { routine, date in
+                    upsertRoutineState(for: routine, on: date, status: .done)
+                },
+                onSkipRoutine: { routine, date in
+                    upsertRoutineState(for: routine, on: date, status: .skipped)
+                },
+                onDelayRoutine: { routine, date in
+                    delayRoutine(routine, on: date, by: 10)
+                }
             )
         case .tasks:
             TasksPageView(
@@ -149,5 +192,5 @@ private enum EditorMode: Identifiable {
 
 #Preview {
     RootView()
-        .modelContainer(for: [ScheduleItem.self], inMemory: true)
+        .modelContainer(for: [ScheduleItem.self, RoutineOccurrenceState.self], inMemory: true)
 }

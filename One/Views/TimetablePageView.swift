@@ -2,8 +2,12 @@ import SwiftUI
 
 struct TimetablePageView: View {
     let items: [ScheduleItem]
+    let routineStates: [RoutineOccurrenceState]
     let onAddRoutine: (Date) -> Void
     let onEdit: (ScheduleItem) -> Void
+    let onMarkRoutineDone: (ScheduleItem, Date) -> Void
+    let onSkipRoutine: (ScheduleItem, Date) -> Void
+    let onDelayRoutine: (ScheduleItem, Date) -> Void
 
     @State private var selectedDate = Calendar.current.startOfDay(for: .now)
     @State private var viewMode: TimetableViewMode = TimetableViewMode.storedValue()
@@ -76,6 +80,17 @@ struct TimetablePageView: View {
             .map { calendar.startOfDay(for: $0.start) } ?? selectedDayStart
     }
 
+    private var showsTodayNowMode: Bool {
+        viewMode == .day && calendar.isDateInToday(selectedDate)
+    }
+
+    private var routineProgress: RoutineDayProgress {
+        let states = routines.compactMap { routineStates.state(for: $0, on: selectedDate, calendar: calendar) }
+        let doneCount = states.filter { $0.status == .done }.count
+        let skippedCount = states.filter { $0.status == .skipped }.count
+        return RoutineDayProgress(total: routines.count, done: doneCount, skipped: skippedCount)
+    }
+
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             MissionTheme.panel
@@ -122,10 +137,37 @@ struct TimetablePageView: View {
                             swipeGesture(for: .week)
                         )
 
+                    if showsTodayNowMode {
+                        TimelineView(.periodic(from: .now, by: 60)) { timeline in
+                            CalendarNowModeCard(
+                                candidate: nowCandidate(at: timeline.date),
+                                progress: routineProgress,
+                                onAddRoutine: {
+                                    onAddRoutine(selectedDayStart)
+                                },
+                                onEdit: onEdit,
+                                onDone: {
+                                    onMarkRoutineDone($0, selectedDayStart)
+                                },
+                                onSkip: {
+                                    onSkipRoutine($0, selectedDayStart)
+                                },
+                                onDelay: {
+                                    onDelayRoutine($0, selectedDayStart)
+                                }
+                            )
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 14)
+                        .padding(.bottom, 12)
+                        .background(MissionTheme.panel)
+                    }
+
                     ScrollView {
                         CalendarDayView(
                             date: selectedDate,
                             routines: routines,
+                            routineStates: routineStates,
                             startHour: dayStartHour,
                             endHour: dayEndHour,
                             onEdit: onEdit
@@ -272,6 +314,56 @@ struct TimetablePageView: View {
         withAnimation(.snappy(duration: 0.18)) {
             selectedDate = nextDate
         }
+    }
+
+    private func nowCandidate(at now: Date) -> RoutineNowCandidate? {
+        guard calendar.isDate(now, inSameDayAs: selectedDate) else {
+            return nil
+        }
+
+        let currentMinute = calendar.minuteOfDay(for: now)
+        let candidates = routines.map { routine in
+            candidate(for: routine, currentMinute: currentMinute)
+        }
+        let pendingCandidates = candidates.filter { !$0.status.isResolved }
+
+        if let activeCandidate = pendingCandidates
+            .filter({ $0.startMinute <= currentMinute && currentMinute < $0.endMinute })
+            .min(by: { $0.endMinute < $1.endMinute }) {
+            return activeCandidate.withPhase(.active)
+        }
+
+        if let nextCandidate = pendingCandidates
+            .filter({ $0.startMinute >= currentMinute })
+            .min(by: { $0.startMinute < $1.startMinute }) {
+            return nextCandidate.withPhase(.next)
+        }
+
+        return pendingCandidates
+            .filter { $0.endMinute <= currentMinute }
+            .max(by: { $0.endMinute < $1.endMinute })?
+            .withPhase(.missed)
+    }
+
+    private func candidate(for routine: ScheduleItem, currentMinute: Int) -> RoutineNowCandidate {
+        let state = routineStates.state(for: routine, on: selectedDate, calendar: calendar)
+        let delayMinutes = state?.delayMinutes ?? 0
+        let baseStartMinute = calendar.minuteOfDay(for: routine.startTime ?? selectedDate)
+        let duration = max(5, routine.durationMinutes(calendar: calendar))
+        let startMinute = baseStartMinute + delayMinutes
+        let endMinute = startMinute + duration
+        let phase: RoutineNowPhase = endMinute <= currentMinute ? .missed : .next
+
+        return RoutineNowCandidate(
+            item: routine,
+            phase: phase,
+            status: state?.status ?? .pending,
+            startMinute: startMinute,
+            endMinute: endMinute,
+            delayMinutes: delayMinutes,
+            calendar: calendar,
+            dayStart: selectedDayStart
+        )
     }
 
     private var monthGridDays: [Date?] {

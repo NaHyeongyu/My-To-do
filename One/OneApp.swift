@@ -9,6 +9,6 @@ struct OneApp: App {
         WindowGroup {
             RootView()
         }
-        .modelContainer(for: [ScheduleItem.self])
+        .modelContainer(for: [ScheduleItem.self, RoutineOccurrenceState.self])
     }
 }

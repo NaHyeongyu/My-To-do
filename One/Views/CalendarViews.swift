@@ -111,6 +111,7 @@ struct CalendarDayStrip: View {
 struct CalendarDayView: View {
     let date: Date
     let routines: [ScheduleItem]
+    let routineStates: [RoutineOccurrenceState]
     let startHour: Int
     let endHour: Int
     let onEdit: (ScheduleItem) -> Void
@@ -125,6 +126,7 @@ struct CalendarDayView: View {
                         TimelineHourLines(
                             startHour: startHour,
                             endHour: endHour,
+                            width: proxy.size.width,
                             labelColor: MissionTheme.tertiaryText,
                             separatorColor: MissionTheme.separator,
                             separatorOpacity: 0.44,
@@ -132,7 +134,10 @@ struct CalendarDayView: View {
                         )
 
                         ForEach(routines) { routine in
-                            CalendarEventBlock(item: routine) {
+                            CalendarEventBlock(
+                                item: routine,
+                                occurrenceState: routineStates.state(for: routine, on: date, calendar: calendar)
+                            ) {
                                 onEdit(routine)
                             }
                             .frame(
@@ -144,13 +149,7 @@ struct CalendarDayView: View {
                             )
                             .offset(
                                 x: TimelineLayout.timeColumnWidth + 12,
-                                y: TimelineLayout.topContentInset
-                                    + TimelineLayout.eventTop(
-                                        for: routine,
-                                        startHour: startHour,
-                                        calendar: calendar,
-                                        fallbackDate: date
-                                    )
+                                y: TimelineLayout.topContentInset + eventTop(for: routine)
                             )
                         }
 
@@ -175,6 +174,12 @@ struct CalendarDayView: View {
         }
 
         return TimelineLayout.currentTimeTop(now: now, startHour: startHour, endHour: endHour, calendar: calendar)
+    }
+
+    private func eventTop(for routine: ScheduleItem) -> CGFloat {
+        let delayMinutes = routineStates.state(for: routine, on: date, calendar: calendar)?.delayMinutes ?? 0
+        let startMinute = calendar.minuteOfDay(for: routine.startTime ?? date) + delayMinutes
+        return CGFloat(max(0, startMinute - startHour * 60)) / 60 * TimelineLayout.hourHeight + 3
     }
 }
 
@@ -366,6 +371,7 @@ private enum CalendarMonthLayout {
 
 private struct CalendarEventBlock: View {
     let item: ScheduleItem
+    let occurrenceState: RoutineOccurrenceState?
     let onEdit: () -> Void
 
     private var startText: String {
@@ -376,19 +382,43 @@ private struct CalendarEventBlock: View {
         (item.endTime ?? .now).formatted(.dateTime.hour().minute())
     }
 
+    private var status: RoutineOccurrenceStatus {
+        occurrenceState?.status ?? .pending
+    }
+
     var body: some View {
         Button(action: onEdit) {
-            Text(item.title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(MissionTheme.selectedText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.76)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 8)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(MissionTheme.eventBackground, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            HStack(alignment: .top, spacing: 5) {
+                if status.isResolved {
+                    Image(systemName: status == .done ? "checkmark.circle.fill" : "forward.end.circle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(MissionTheme.selectedText.opacity(0.86))
+                        .padding(.top, 1)
+                }
+
+                Text(item.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(MissionTheme.selectedText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(eventBackground, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(item.title), from \(startText) to \(endText)")
+        .accessibilityLabel("\(item.title), \(status.title), from \(startText) to \(endText)")
+    }
+
+    private var eventBackground: Color {
+        switch status {
+        case .pending:
+            MissionTheme.eventBackground
+        case .done:
+            MissionTheme.eventBackground.opacity(0.62)
+        case .skipped:
+            MissionTheme.tertiaryText.opacity(0.72)
+        }
     }
 }

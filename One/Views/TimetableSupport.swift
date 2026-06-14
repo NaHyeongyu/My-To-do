@@ -97,3 +97,241 @@ enum TimetableViewMode: String, CaseIterable, Identifiable {
         }
     }
 }
+
+enum RoutineNowPhase {
+    case active
+    case next
+    case missed
+
+    var title: String {
+        switch self {
+        case .active: "Now"
+        case .next: "Next"
+        case .missed: "Missed"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .active: "bolt.fill"
+        case .next: "arrow.right"
+        case .missed: "exclamationmark"
+        }
+    }
+}
+
+struct RoutineDayProgress {
+    let total: Int
+    let done: Int
+    let skipped: Int
+
+    var completed: Int {
+        done + skipped
+    }
+
+    var pending: Int {
+        max(0, total - completed)
+    }
+
+    var fraction: Double {
+        guard total > 0 else { return 0 }
+        return Double(completed) / Double(total)
+    }
+
+    var summaryText: String {
+        guard total > 0 else {
+            return "No routines"
+        }
+
+        return "\(pending) open · \(done) done · \(skipped) skipped"
+    }
+}
+
+struct RoutineNowCandidate: Identifiable {
+    let item: ScheduleItem
+    var phase: RoutineNowPhase
+    let status: RoutineOccurrenceStatus
+    let startMinute: Int
+    let endMinute: Int
+    let delayMinutes: Int
+    let calendar: Calendar
+    let dayStart: Date
+
+    var id: UUID {
+        item.id
+    }
+
+    var timeText: String {
+        "\(formattedTime(for: startMinute)) - \(formattedTime(for: endMinute))"
+    }
+
+    var delayText: String? {
+        delayMinutes > 0 ? "+\(delayMinutes)m" : nil
+    }
+
+    func withPhase(_ nextPhase: RoutineNowPhase) -> RoutineNowCandidate {
+        var copy = self
+        copy.phase = nextPhase
+        return copy
+    }
+
+    private func formattedTime(for minute: Int) -> String {
+        let date = calendar.date(byAdding: .minute, value: minute, to: dayStart) ?? dayStart
+        return date.formatted(.dateTime.hour().minute())
+    }
+}
+
+struct CalendarNowModeCard: View {
+    let candidate: RoutineNowCandidate?
+    let progress: RoutineDayProgress
+    let onAddRoutine: () -> Void
+    let onEdit: (ScheduleItem) -> Void
+    let onDone: (ScheduleItem) -> Void
+    let onSkip: (ScheduleItem) -> Void
+    let onDelay: (ScheduleItem) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            header
+
+            if let candidate {
+                candidateContent(candidate)
+            } else {
+                emptyContent
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .missionCard()
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label(candidate?.phase.title ?? "Today", systemImage: candidate?.phase.systemImage ?? "checklist")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(MissionTheme.selectedText)
+                    .labelStyle(.titleAndIcon)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(MissionTheme.accent, in: Capsule(style: .continuous))
+
+                Text(progress.summaryText)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(MissionTheme.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+
+                Spacer(minLength: 0)
+            }
+
+            ProgressView(value: progress.fraction)
+                .tint(MissionTheme.accent)
+        }
+    }
+
+    private func candidateContent(_ candidate: RoutineNowCandidate) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(candidate.item.title)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(MissionTheme.graphite)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+
+                    if let delayText = candidate.delayText {
+                        Text(delayText)
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(MissionTheme.secondaryText)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(MissionTheme.separator.opacity(0.44), in: Capsule(style: .continuous))
+                    }
+                }
+
+                Text(candidate.timeText)
+                    .font(.caption.weight(.medium).monospacedDigit())
+                    .foregroundStyle(MissionTheme.secondaryText)
+                    .lineLimit(1)
+
+                if !candidate.item.notes.isEmpty {
+                    Text(candidate.item.notes)
+                        .font(.caption)
+                        .foregroundStyle(MissionTheme.tertiaryText)
+                        .lineLimit(1)
+                }
+            }
+
+            actionRow(candidate)
+        }
+    }
+
+    @ViewBuilder
+    private func actionRow(_ candidate: RoutineNowCandidate) -> some View {
+        HStack(spacing: 8) {
+            if candidate.phase != .next {
+                Button {
+                    onDone(candidate.item)
+                } label: {
+                    Label("Done", systemImage: "checkmark")
+                        .frame(maxWidth: .infinity)
+                }
+                .missionLiquidButton(.prominent)
+            }
+
+            Button {
+                onDelay(candidate.item)
+            } label: {
+                Label("10m", systemImage: "clock.arrow.circlepath")
+                    .frame(maxWidth: .infinity)
+            }
+            .missionLiquidButton()
+
+            Button {
+                onSkip(candidate.item)
+            } label: {
+                Label("Skip", systemImage: "forward.end")
+                    .frame(maxWidth: .infinity)
+            }
+            .missionLiquidButton()
+
+            Button {
+                onEdit(candidate.item)
+            } label: {
+                Image(systemName: "pencil")
+                    .frame(width: 36, height: 32)
+            }
+            .missionLiquidButton()
+            .accessibilityLabel("Edit routine")
+        }
+        .font(.caption.weight(.semibold))
+        .buttonBorderShape(.capsule)
+    }
+
+    private var emptyContent: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(progress.total == 0 ? "No routines today" : "Clear for today")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(MissionTheme.graphite)
+
+                Text(progress.total == 0 ? "Add the first block." : "No open routine remains.")
+                    .font(.caption)
+                    .foregroundStyle(MissionTheme.secondaryText)
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                onAddRoutine()
+            } label: {
+                Image(systemName: "plus")
+                    .frame(width: 36, height: 32)
+            }
+            .missionLiquidButton(.prominent)
+            .buttonBorderShape(.circle)
+            .accessibilityLabel("Add routine")
+        }
+    }
+}
