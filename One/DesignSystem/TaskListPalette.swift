@@ -7,6 +7,7 @@ enum TaskListPalette {
     static let primaryText = Color(uiColor: .label)
     static let secondaryText = Color(uiColor: .secondaryLabel)
     static let tertiaryText = Color(uiColor: .tertiaryLabel)
+    static let selectedText = Color(uiColor: .systemBackground)
     static let separator = Color(uiColor: .separator)
     static let fill = Color(uiColor: .tertiarySystemFill)
 }

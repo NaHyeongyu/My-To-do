@@ -25,6 +25,8 @@
 		B20001062C1C0001000A1001 /* ViewFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000062C1C0001000A1001 /* ViewFormatting.swift */; };
 		B20001072C1C0001000A1001 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000072C1C0001000A1001 /* EmptyStateView.swift */; };
 		B20001082C1C0001000A1001 /* PanelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000082C1C0001000A1001 /* PanelViews.swift */; };
+		F10001012C210001000A1001 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000012C210001000A1001 /* AppSettings.swift */; };
+		F10001022C210001000A1001 /* SettingsPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000022C210001000A1001 /* SettingsPageView.swift */; };
 		E10001012C1F0001000A1001 /* TaskListPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000012C1F0001000A1001 /* TaskListPalette.swift */; };
 		E10001032C1F0001000A1001 /* CompletedTasksPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000032C1F0001000A1001 /* CompletedTasksPageView.swift */; };
 		E10001042C1F0001000A1001 /* ScheduleEditorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000042C1F0001000A1001 /* ScheduleEditorControls.swift */; };
@@ -37,11 +39,8 @@
 		C00101012C1D0001000A1001 /* WidgetSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00100012C1D0001000A1001 /* WidgetSnapshotStore.swift */; };
 		C00101022C1D0001000A1001 /* WidgetSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00100012C1D0001000A1001 /* WidgetSnapshotStore.swift */; };
 		C00101032C1D0001000A1001 /* WidgetSnapshotWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00100022C1D0001000A1001 /* WidgetSnapshotWriter.swift */; };
-		D10001012C1E0001000A1001 /* RoutineNotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000012C1E0001000A1001 /* RoutineNotificationScheduler.swift */; };
-		D10001022C1E0001000A1001 /* NotificationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000022C1E0001000A1001 /* NotificationDelegate.swift */; };
 		C00201012C1D0001000A1001 /* OneWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00200012C1D0001000A1001 /* OneWidgets.swift */; };
 		C00201032C1D0001000A1001 /* OneWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = C00200042C1D0001000A1001 /* OneWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		C00301012C200001000A1001 /* one_signal.wav in Resources */ = {isa = PBXBuildFile; fileRef = C00300012C200001000A1001 /* one_signal.wav */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -88,6 +87,8 @@
 		B20000072C1C0001000A1001 /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
 		B20000082C1C0001000A1001 /* PanelViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelViews.swift; sourceTree = "<group>"; };
 		B200000A2C1C0001000A1001 /* TimelineViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineViews.swift; sourceTree = "<group>"; };
+		F10000012C210001000A1001 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		F10000022C210001000A1001 /* SettingsPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPageView.swift; sourceTree = "<group>"; };
 		E10000012C1F0001000A1001 /* TaskListPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskListPalette.swift; sourceTree = "<group>"; };
 		E10000032C1F0001000A1001 /* CompletedTasksPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletedTasksPageView.swift; sourceTree = "<group>"; };
 		E10000042C1F0001000A1001 /* ScheduleEditorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleEditorControls.swift; sourceTree = "<group>"; };
@@ -101,13 +102,10 @@
 		C00100022C1D0001000A1001 /* WidgetSnapshotWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotWriter.swift; sourceTree = "<group>"; };
 		C00100032C1D0001000A1001 /* One.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = One.entitlements; sourceTree = "<group>"; };
 		C00100042C1D0001000A1001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		D10000012C1E0001000A1001 /* RoutineNotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineNotificationScheduler.swift; sourceTree = "<group>"; };
-		D10000022C1E0001000A1001 /* NotificationDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationDelegate.swift; sourceTree = "<group>"; };
 		C00200012C1D0001000A1001 /* OneWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneWidgets.swift; sourceTree = "<group>"; };
 		C00200022C1D0001000A1001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		C00200032C1D0001000A1001 /* OneWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OneWidgets.entitlements; sourceTree = "<group>"; };
 		C00200042C1D0001000A1001 /* OneWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OneWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		C00300012C200001000A1001 /* one_signal.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = one_signal.wav; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -154,12 +152,10 @@
 				C00100042C1D0001000A1001 /* Info.plist */,
 				C00100022C1D0001000A1001 /* WidgetSnapshotWriter.swift */,
 				C00100032C1D0001000A1001 /* One.entitlements */,
-				D10002012C1E0001000A1001 /* Services */,
 				2A2F5F142C1C0001000A1001 /* Models */,
 				B20002012C1C0001000A1001 /* Navigation */,
 				2A2F5F152C1C0001000A1001 /* Views */,
 				B20002022C1C0001000A1001 /* DesignSystem */,
-				C00302012C200001000A1001 /* Sounds */,
 				2A2F5F392C1C0001000A1001 /* Assets.xcassets */,
 			);
 			path = One;
@@ -173,6 +169,7 @@
 				B20000022C1C0001000A1001 /* RepeatWeekday.swift */,
 				B200000B2C1C0001000A1001 /* RoutineOccurrenceState.swift */,
 				2A2F5F382C1C0001000A1001 /* TaskFiltering.swift */,
+				F10000012C210001000A1001 /* AppSettings.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -187,6 +184,7 @@
 				E10000032C1F0001000A1001 /* CompletedTasksPageView.swift */,
 				B10000042C1C0001000A1001 /* RoutinePlannerPageView.swift */,
 				B100000A2C1C0001000A1001 /* StreakPageView.swift */,
+				F10000022C210001000A1001 /* SettingsPageView.swift */,
 				B10000072C1C0001000A1001 /* TimetableSupport.swift */,
 				B20002032C1C0001000A1001 /* Common */,
 				2A2F5F332C1C0001000A1001 /* TodoRowView.swift */,
@@ -234,15 +232,6 @@
 			path = Shared;
 			sourceTree = "<group>";
 		};
-		D10002012C1E0001000A1001 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				D10000012C1E0001000A1001 /* RoutineNotificationScheduler.swift */,
-				D10000022C1E0001000A1001 /* NotificationDelegate.swift */,
-			);
-			path = Services;
-			sourceTree = "<group>";
-		};
 		C00202012C1D0001000A1001 /* OneWidgets */ = {
 			isa = PBXGroup;
 			children = (
@@ -251,14 +240,6 @@
 				C00200032C1D0001000A1001 /* OneWidgets.entitlements */,
 			);
 			path = OneWidgets;
-			sourceTree = "<group>";
-		};
-		C00302012C200001000A1001 /* Sounds */ = {
-			isa = PBXGroup;
-			children = (
-				C00300012C200001000A1001 /* one_signal.wav */,
-			);
-			path = Sounds;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -343,7 +324,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				2A2F5F492C1C0001000A1001 /* Assets.xcassets in Resources */,
-				C00301012C200001000A1001 /* one_signal.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -375,16 +355,16 @@
 				B20001032C1C0001000A1001 /* AppPage.swift in Sources */,
 				B20001042C1C0001000A1001 /* MissionTheme.swift in Sources */,
 				B20001052C1C0001000A1001 /* MissionViewModifiers.swift in Sources */,
+				F10001012C210001000A1001 /* AppSettings.swift in Sources */,
 				E10001012C1F0001000A1001 /* TaskListPalette.swift in Sources */,
 				B20001062C1C0001000A1001 /* ViewFormatting.swift in Sources */,
 				B20001072C1C0001000A1001 /* EmptyStateView.swift in Sources */,
 				B20001082C1C0001000A1001 /* PanelViews.swift in Sources */,
 				B200010A2C1C0001000A1001 /* TimelineViews.swift in Sources */,
 				E10001032C1F0001000A1001 /* CompletedTasksPageView.swift in Sources */,
+				F10001022C210001000A1001 /* SettingsPageView.swift in Sources */,
 				C00101012C1D0001000A1001 /* WidgetSnapshotStore.swift in Sources */,
 				C00101032C1D0001000A1001 /* WidgetSnapshotWriter.swift in Sources */,
-				D10001012C1E0001000A1001 /* RoutineNotificationScheduler.swift in Sources */,
-				D10001022C1E0001000A1001 /* NotificationDelegate.swift in Sources */,
 				2A2F5F432C1C0001000A1001 /* TodoRowView.swift in Sources */,
 				2A2F5F442C1C0001000A1001 /* TaskEditorView.swift in Sources */,
 				E10001042C1F0001000A1001 /* ScheduleEditorControls.swift in Sources */,
@@ -536,7 +516,8 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = One/One.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = U9385H3C5Q;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -547,7 +528,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nahyeongyu.One;
+				PRODUCT_BUNDLE_IDENTIFIER = com.onemytodo.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -565,7 +546,8 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = One/One.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = U9385H3C5Q;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -576,7 +558,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nahyeongyu.One;
+				PRODUCT_BUNDLE_IDENTIFIER = com.onemytodo.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -593,7 +575,8 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = OneWidgets/OneWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = U9385H3C5Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OneWidgets/Info.plist;
@@ -604,7 +587,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nahyeongyu.One.OneWidgets;
+				PRODUCT_BUNDLE_IDENTIFIER = com.onemytodo.app.OneWidgets;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -623,7 +606,8 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = OneWidgets/OneWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = U9385H3C5Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OneWidgets/Info.plist;
@@ -634,7 +618,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nahyeongyu.One.OneWidgets;
+				PRODUCT_BUNDLE_IDENTIFIER = com.onemytodo.app.OneWidgets;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

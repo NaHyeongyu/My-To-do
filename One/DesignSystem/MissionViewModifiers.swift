@@ -8,10 +8,10 @@ enum MissionButtonVariant {
 struct MissionCardModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(MissionTheme.panel, in: RoundedRectangle(cornerRadius: MissionTheme.radius, style: .continuous))
+            .background(MissionTheme.elevatedPanel, in: RoundedRectangle(cornerRadius: MissionTheme.radius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: MissionTheme.radius, style: .continuous)
-                    .stroke(MissionTheme.separator.opacity(0.34), lineWidth: 0.5)
+                    .stroke(MissionTheme.separator.opacity(0.42), lineWidth: 0.5)
             }
     }
 }

@@ -10,6 +10,8 @@ struct WidgetRoutineItem: Codable, Hashable, Identifiable {
     let title: String
     let startTimeText: String
     let endTimeText: String
+    let startDate: Date?
+    let endDate: Date?
     let outcomeRawValue: String?
 
     init(
@@ -17,17 +19,33 @@ struct WidgetRoutineItem: Codable, Hashable, Identifiable {
         title: String,
         startTimeText: String,
         endTimeText: String,
+        startDate: Date? = nil,
+        endDate: Date? = nil,
         outcome: WidgetRoutineOutcome = .pending
     ) {
         self.id = id
         self.title = title
         self.startTimeText = startTimeText
         self.endTimeText = endTimeText
+        self.startDate = startDate
+        self.endDate = endDate
         self.outcomeRawValue = outcome.rawValue
     }
 
     var outcome: WidgetRoutineOutcome {
         WidgetRoutineOutcome(rawValue: outcomeRawValue ?? "") ?? .pending
+    }
+
+    func isOutcomeAvailable(at date: Date) -> Bool {
+        guard !outcome.isResolved else {
+            return false
+        }
+
+        guard let startDate else {
+            return true
+        }
+
+        return date >= startDate
     }
 }
 
@@ -72,7 +90,7 @@ enum OneWidgetDeepLink {
 }
 
 enum WidgetSnapshotStore {
-    static let appGroupIdentifier = "group.com.nahyeongyu.One"
+    static let appGroupIdentifier = "group.com.onemytodo.app"
 
     private static let snapshotKey = "todayWidgetSnapshot"
 

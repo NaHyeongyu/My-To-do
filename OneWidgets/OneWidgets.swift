@@ -27,8 +27,16 @@ struct TodayOverviewProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodayOverviewEntry>) -> Void) {
-        let entry = TodayOverviewEntry(date: .now, snapshot: WidgetSnapshotStore.load())
-        let nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now.addingTimeInterval(900)
+        let now = Date()
+        let snapshot = WidgetSnapshotStore.load()
+        let entry = TodayOverviewEntry(date: now, snapshot: snapshot)
+        let fallbackRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: now) ?? now.addingTimeInterval(900)
+        let nextRoutineUnlock = snapshot.routines
+            .filter { !$0.outcome.isResolved }
+            .compactMap(\.startDate)
+            .filter { $0 > now }
+            .min()
+        let nextRefresh = [nextRoutineUnlock, fallbackRefresh].compactMap(\.self).min() ?? fallbackRefresh
         completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
     }
 }
@@ -329,31 +337,45 @@ struct RoutineCheckInWidgetView: View {
         }
     }
 
+    @ViewBuilder
     private var actionLinks: some View {
+        let isAvailable = routine?.isOutcomeAvailable(at: entry.date) == true
+
         HStack(spacing: 8) {
-            Link(destination: OneWidgetDeepLink.fail) {
-                Label("Fail", systemImage: "xmark")
-                    .font(.caption.weight(.bold))
-                    .frame(maxWidth: .infinity)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .padding(.vertical, 8)
-                    .foregroundStyle(.white)
-                    .background(.red, in: Capsule())
+            if isAvailable {
+                Link(destination: OneWidgetDeepLink.fail) {
+                    actionIcon("xmark", color: .red)
+                }
+                .accessibilityLabel("Fail")
+            } else {
+                actionIcon("xmark", color: .red, isLocked: true)
+                    .accessibilityLabel("Fail locked until routine start")
             }
 
-            Link(destination: OneWidgetDeepLink.success) {
-                Label("Success", systemImage: "checkmark")
-                    .font(.caption.weight(.bold))
-                    .frame(maxWidth: .infinity)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .padding(.vertical, 8)
-                    .foregroundStyle(.white)
-                    .background(.green, in: Capsule())
+            if isAvailable {
+                Link(destination: OneWidgetDeepLink.success) {
+                    actionIcon("checkmark", color: .green)
+                }
+                .accessibilityLabel("Success")
+            } else {
+                actionIcon("checkmark", color: .green, isLocked: true)
+                    .accessibilityLabel("Success locked until routine start")
             }
         }
-        .labelStyle(.titleAndIcon)
+    }
+
+    private func actionIcon(_ systemName: String, color: Color, isLocked: Bool = false) -> some View {
+        Image(systemName: systemName)
+            .font(.caption.weight(.bold))
+            .frame(maxWidth: .infinity)
+            .frame(height: 34)
+            .foregroundStyle(.white)
+            .background(color.opacity(isLocked ? 0.32 : 1), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(color.opacity(isLocked ? 0.4 : 0), lineWidth: 1)
+            }
+            .opacity(isLocked ? 0.62 : 1)
     }
 }
 

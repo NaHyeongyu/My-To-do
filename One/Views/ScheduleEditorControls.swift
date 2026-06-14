@@ -46,7 +46,7 @@ private struct WeekdaySelectionButton: View {
         Button(action: action) {
             Text(weekday.compactTitle)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(isSelected ? TaskListPalette.rowBackground : TaskListPalette.secondaryText)
+                .foregroundStyle(isSelected ? TaskListPalette.selectedText : TaskListPalette.secondaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity)

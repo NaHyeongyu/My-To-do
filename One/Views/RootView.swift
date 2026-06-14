@@ -27,6 +27,10 @@ struct RootView: View {
             page(for: .streak)
                 .tabItem { Label(AppPage.streak.title, systemImage: AppPage.streak.symbolName) }
                 .tag(AppPage.streak)
+
+            page(for: .settings)
+                .tabItem { Label(AppPage.settings.title, systemImage: AppPage.settings.symbolName) }
+                .tag(AppPage.settings)
         }
         .tint(MissionTheme.accent)
         .sheet(item: $editorMode) { mode in
@@ -39,13 +43,9 @@ struct RootView: View {
         }
         .onAppear {
             updateWidgetSnapshot()
-            syncRoutineNotificationsIfAuthorized()
         }
         .onChange(of: widgetSnapshotSignature) { _, _ in
             updateWidgetSnapshot()
-        }
-        .onChange(of: routineNotificationSignature) { _, _ in
-            syncRoutineNotificationsIfAuthorized()
         }
         .onOpenURL { url in
             handleDeepLink(url)
@@ -87,32 +87,6 @@ struct RootView: View {
     private func updateWidgetSnapshot(replacing updatedState: RoutineOccurrenceState? = nil) {
         let states = routineStatesForWidget(replacing: updatedState)
         WidgetSnapshotWriter.save(items: items, routineStates: states)
-    }
-
-    private var routineNotificationSignature: String {
-        items
-            .filter { $0.kind == .routine }
-            .map { item in
-                [
-                    item.id.uuidString,
-                    item.title,
-                    item.notes,
-                    item.taskDate?.timeIntervalSince1970.description ?? "",
-                    item.startTime?.timeIntervalSince1970.description ?? "",
-                    item.repeatWeekdayMask.description,
-                    item.activeFrom?.timeIntervalSince1970.description ?? "",
-                    item.activeUntil?.timeIntervalSince1970.description ?? ""
-                ].joined(separator: "|")
-            }
-            .joined(separator: ";")
-    }
-
-    private func syncRoutineNotificationsIfAuthorized() {
-        let schedules = items.compactMap(RoutineNotificationSchedule.init(item:))
-
-        Task {
-            await RoutineNotificationScheduler.shared.syncNotificationsIfAuthorized(for: schedules)
-        }
     }
 
     @discardableResult
@@ -160,6 +134,8 @@ struct RootView: View {
             selectedPage = .routines
         case "streak":
             selectedPage = .streak
+        case "settings":
+            selectedPage = .settings
         default:
             selectedPage = .timetable
         }
@@ -214,12 +190,6 @@ struct RootView: View {
             .filter({ $0.startMinute <= currentMinute && currentMinute < $0.endMinute })
             .min(by: { $0.endMinute < $1.endMinute }) {
             return active.routine
-        }
-
-        if let next = candidates
-            .filter({ $0.startMinute >= currentMinute })
-            .min(by: { $0.startMinute < $1.startMinute }) {
-            return next.routine
         }
 
         return candidates
@@ -281,6 +251,8 @@ struct RootView: View {
                 items: items,
                 routineStates: routineStates
             )
+        case .settings:
+            SettingsPageView()
         }
     }
 }

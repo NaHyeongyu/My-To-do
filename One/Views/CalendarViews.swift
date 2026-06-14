@@ -127,9 +127,9 @@ struct CalendarDayView: View {
                             startHour: startHour,
                             endHour: endHour,
                             width: proxy.size.width,
-                            labelColor: MissionTheme.tertiaryText,
+                            labelColor: MissionTheme.secondaryText,
                             separatorColor: MissionTheme.separator,
-                            separatorOpacity: 0.44,
+                            separatorOpacity: 0.38,
                             addsScrollTargets: true
                         )
 
@@ -234,7 +234,7 @@ struct CalendarMonthView: View {
                 ForEach(weekdaySymbols.indices, id: \.self) { index in
                     Text(weekdaySymbols[index])
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(MissionTheme.tertiaryText)
+                        .foregroundStyle(MissionTheme.secondaryText)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -352,7 +352,7 @@ private struct MonthEventPreview: View {
     var body: some View {
         HStack(spacing: 5) {
             Circle()
-                .fill(MissionTheme.eventBackground)
+                .fill(MissionTheme.eventIndicator)
                 .frame(width: 6, height: 6)
 
             Text(item.title)
@@ -392,13 +392,13 @@ private struct CalendarEventBlock: View {
                 if status.isResolved {
                     Image(systemName: status == .done ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(MissionTheme.selectedText.opacity(0.86))
+                        .foregroundStyle(statusTint)
                         .padding(.top, 1)
                 }
 
                 Text(item.title)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(MissionTheme.selectedText)
+                    .foregroundStyle(eventForeground)
                     .lineLimit(1)
                     .minimumScaleFactor(0.76)
             }
@@ -416,9 +416,29 @@ private struct CalendarEventBlock: View {
         case .pending:
             MissionTheme.eventBackground
         case .done:
-            MissionTheme.success.opacity(0.78)
+            MissionTheme.success.opacity(0.18)
         case .skipped:
-            MissionTheme.danger.opacity(0.78)
+            MissionTheme.danger.opacity(0.18)
+        }
+    }
+
+    private var eventForeground: Color {
+        switch status {
+        case .pending:
+            MissionTheme.eventForeground
+        case .done, .skipped:
+            MissionTheme.graphite
+        }
+    }
+
+    private var statusTint: Color {
+        switch status {
+        case .pending:
+            MissionTheme.secondaryText
+        case .done:
+            MissionTheme.success
+        case .skipped:
+            MissionTheme.danger
         }
     }
 }
