@@ -171,6 +171,7 @@ private struct RoutineDayEventBlock: View {
                     .frame(width: 3)
                     .padding(.vertical, 7)
             }
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(item.title), \(weekday.title), \(timeRangeText)")
@@ -180,16 +181,20 @@ private struct RoutineDayEventBlock: View {
         VStack(alignment: .leading, spacing: 4) {
             titleText
 
-            Text(timeRangeText)
-                .font(.caption2.weight(.medium).monospacedDigit())
-                .foregroundStyle(MissionTheme.secondaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+            timeText
         }
     }
 
     private var compactContent: some View {
-        titleText
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                titleText
+                timeText
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+
+            titleText
+        }
     }
 
     private var titleText: some View {
@@ -198,5 +203,14 @@ private struct RoutineDayEventBlock: View {
             .foregroundStyle(MissionTheme.graphite)
             .lineLimit(1)
             .minimumScaleFactor(0.64)
+    }
+
+    private var timeText: some View {
+        Text(timeRangeText)
+            .font(.caption2.weight(.medium).monospacedDigit())
+            .foregroundStyle(MissionTheme.secondaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .allowsTightening(true)
     }
 }

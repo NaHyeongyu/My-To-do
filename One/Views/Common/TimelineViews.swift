@@ -5,10 +5,11 @@ enum TimelineLayout {
     static let timeColumnWidth: CGFloat = 54
     static let topContentInset: CGFloat = 22
     static let eventMinWidth: CGFloat = 120
-    static let eventMinHeight: CGFloat = 48
+    static let eventMinimumVisibleHeight: CGFloat = 1
     static let eventLeadingInset: CGFloat = timeColumnWidth + 12
     static let eventTrailingInset: CGFloat = 12
     static let eventColumnSpacing: CGFloat = 4
+    static let eventVerticalGap: CGFloat = 6
 
     static func contentHeight(startHour: Int, endHour: Int) -> CGFloat {
         topContentInset + CGFloat(endHour - startHour) * hourHeight
@@ -31,7 +32,7 @@ enum TimelineLayout {
             max(0, ScheduleItem.minutesPerDay - startMinute)
         )
 
-        return max(eventMinHeight, CGFloat(max(30, visibleMinutes)) / 60 * hourHeight - 6)
+        return max(eventMinimumVisibleHeight, CGFloat(max(1, visibleMinutes)) / 60 * hourHeight - eventVerticalGap)
     }
 
     static func eventLayouts(
@@ -84,7 +85,7 @@ enum TimelineLayout {
             max(0, ScheduleItem.minutesPerDay - startMinute)
         )
 
-        return max(eventMinHeight, CGFloat(max(30, visibleMinutes)) / 60 * hourHeight - 6)
+        return max(eventMinimumVisibleHeight, CGFloat(max(1, visibleMinutes)) / 60 * hourHeight - eventVerticalGap)
     }
 
     private static func grouped(_ events: [RawTimelineEvent]) -> [[RawTimelineEvent]] {

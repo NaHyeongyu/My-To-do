@@ -421,20 +421,28 @@ private struct CalendarEventBlock: View {
         VStack(alignment: .leading, spacing: 3) {
             titleRow
 
-            Text(timeRangeText)
-                .font(.caption2.weight(.medium).monospacedDigit())
-                .foregroundStyle(MissionTheme.secondaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.64)
-                .allowsTightening(true)
+            timeText
         }
     }
 
     private var compactContent: some View {
-        titleRow
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                compactTitle
+                timeText
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+
+            titleRow
+        }
     }
 
     private var titleRow: some View {
+        compactTitle
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var compactTitle: some View {
         Text(item.title)
             .font(.caption.weight(.semibold))
             .foregroundStyle(eventForeground)
@@ -442,7 +450,15 @@ private struct CalendarEventBlock: View {
             .minimumScaleFactor(0.56)
             .allowsTightening(true)
             .layoutPriority(1)
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var timeText: some View {
+        Text(timeRangeText)
+            .font(.caption2.weight(.medium).monospacedDigit())
+            .foregroundStyle(MissionTheme.secondaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.64)
+            .allowsTightening(true)
     }
 
     private var showsStatusBadge: Bool {
