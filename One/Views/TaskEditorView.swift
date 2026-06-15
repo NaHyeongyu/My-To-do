@@ -142,18 +142,7 @@ struct ScheduleItemEditorView: View {
                             routineLabel = routineLabel == label ? nil : label
                         }
                     } label: {
-                        Label(label.title, systemImage: label.symbolName)
-                            .font(.subheadline.weight(.semibold))
-                            .labelStyle(.titleAndIcon)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.78)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .foregroundStyle(routineLabel == label ? MissionTheme.selectedText : MissionTheme.graphite)
-                            .background(
-                                routineLabel == label ? MissionTheme.selection : MissionTheme.controlFill,
-                                in: Capsule(style: .continuous)
-                            )
+                        RoutineLabelBadge(label: label, isSelected: routineLabel == label)
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(routineLabel == label ? .isSelected : [])

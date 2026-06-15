@@ -674,13 +674,17 @@ private struct StreakRoutineLabelTimeRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                Label(summary.label.title, systemImage: summary.label.symbolName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(TaskListPalette.primaryText)
-                    .lineLimit(1)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(TaskListPalette.fill, in: Capsule(style: .continuous))
+                RoutineLabelBadge(
+                    label: summary.label,
+                    fillsWidth: false,
+                    fixedWidth: 112,
+                    font: .caption.weight(.semibold),
+                    iconSize: 12,
+                    height: 30,
+                    horizontalPadding: 9,
+                    normalForeground: TaskListPalette.primaryText,
+                    normalBackground: TaskListPalette.fill
+                )
 
                 Spacer(minLength: 8)
 
