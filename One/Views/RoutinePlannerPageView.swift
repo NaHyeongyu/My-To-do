@@ -116,56 +116,53 @@ private struct RoutineDayTimeline: View {
 
     @ViewBuilder
     private func eventBlocks(width: CGFloat) -> some View {
-        ForEach(routines) { routine in
+        ForEach(eventLayouts(width: width)) { layout in
             RoutineDayEventBlock(
                 weekday: weekday,
-                item: routine
+                item: layout.item,
+                isCompact: layout.isCompact
             ) {
-                onEdit(routine)
+                onEdit(layout.item)
             }
             .frame(
-                width: max(TimelineLayout.eventMinWidth, width - TimelineLayout.timeColumnWidth - 14),
-                height: TimelineLayout.eventHeight(for: routine, calendar: calendar)
+                width: layout.width,
+                height: layout.height
             )
             .offset(
-                x: TimelineLayout.timeColumnWidth + 12,
-                y: TimelineLayout.topContentInset
-                    + TimelineLayout.eventTop(for: routine, startHour: startHour, calendar: calendar)
+                x: layout.x,
+                y: layout.top
             )
         }
+    }
+
+    private func eventLayouts(width: CGFloat) -> [TimelineEventLayout] {
+        TimelineLayout.eventLayouts(
+            for: routines,
+            in: width,
+            startHour: startHour,
+            calendar: calendar
+        )
     }
 }
 
 private struct RoutineDayEventBlock: View {
     let weekday: RepeatWeekday
     let item: ScheduleItem
+    let isCompact: Bool
     let onEdit: () -> Void
 
-    private var startText: String {
-        (item.startTime ?? .now).formatted(.dateTime.hour().minute())
-    }
-
-    private var endText: String {
-        (item.endTime ?? .now).formatted(.dateTime.hour().minute())
+    private var timeRangeText: String {
+        item.timeRangeText()
     }
 
     var body: some View {
         Button(action: onEdit) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(MissionTheme.graphite)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.76)
-
-                Text("\(startText) - \(endText)")
-                    .font(.caption2.weight(.medium).monospacedDigit())
-                    .foregroundStyle(MissionTheme.secondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+            ViewThatFits(in: .vertical) {
+                fullContent
+                compactContent
             }
-            .padding(.vertical, 7)
-            .padding(.horizontal, 8)
+            .padding(.vertical, isCompact ? 5 : 7)
+            .padding(.horizontal, isCompact ? 7 : 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(MissionTheme.elevatedPanel, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(alignment: .leading) {
@@ -176,6 +173,30 @@ private struct RoutineDayEventBlock: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(item.title), \(weekday.title), from \(startText) to \(endText)")
+        .accessibilityLabel("\(item.title), \(weekday.title), \(timeRangeText)")
+    }
+
+    private var fullContent: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            titleText
+
+            Text(timeRangeText)
+                .font(.caption2.weight(.medium).monospacedDigit())
+                .foregroundStyle(MissionTheme.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+    }
+
+    private var compactContent: some View {
+        titleText
+    }
+
+    private var titleText: some View {
+        Text(item.title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(MissionTheme.graphite)
+            .lineLimit(1)
+            .minimumScaleFactor(0.64)
     }
 }

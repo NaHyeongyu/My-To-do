@@ -4,6 +4,8 @@ import SwiftUI
 struct QuickSingleTaskRow: View {
     @Environment(\.modelContext) private var modelContext
 
+    let onItemsChanged: () -> Void
+
     @State private var title = ""
     @FocusState private var isFocused: Bool
 
@@ -36,10 +38,10 @@ struct QuickSingleTaskRow: View {
         .padding(.vertical, 9)
         .padding(.leading, 12)
         .padding(.trailing, 8)
-        .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke((isFocused ? TaskListPalette.primaryText : TaskListPalette.separator).opacity(isFocused ? 0.24 : 0.28), lineWidth: 0.5)
+                .stroke(isFocused ? TaskListPalette.focusedGlassStroke : TaskListPalette.glassStroke, lineWidth: 0.5)
         }
     }
 
@@ -59,6 +61,7 @@ struct QuickSingleTaskRow: View {
         modelContext.insert(item)
         title = ""
         isFocused = true
+        onItemsChanged()
     }
 }
 
@@ -211,7 +214,7 @@ private enum QuickTaskInputParser {
 }
 
 #Preview {
-    QuickSingleTaskRow()
+    QuickSingleTaskRow(onItemsChanged: {})
         .padding()
         .modelContainer(for: [ScheduleItem.self], inMemory: true)
 }

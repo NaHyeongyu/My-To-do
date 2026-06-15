@@ -180,7 +180,8 @@ struct RoutineNowCandidate: Identifiable {
     }
 
     var timeText: String {
-        "\(formattedTime(for: startMinute)) - \(formattedTime(for: endMinute))"
+        let suffix = endMinute >= ScheduleItem.minutesPerDay ? " +1d" : ""
+        return "\(formattedTime(for: startMinute)) - \(formattedTime(for: endMinute))\(suffix)"
     }
 
     var delayText: String? {
@@ -312,28 +313,22 @@ struct CalendarNowModeCard: View {
             .accessibilityLabel("Routine actions available at start time")
         } else {
             HStack(spacing: 8) {
-                Button {
+                RoutineOutcomeButton(
+                    title: "Fail",
+                    systemImage: "xmark",
+                    tint: MissionTheme.danger
+                ) {
                     onSkip(candidate.item)
-                } label: {
-                    Label("Fail", systemImage: "xmark")
-                        .frame(maxWidth: .infinity)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
                 }
-                .missionLiquidButton(.prominent)
-                .tint(MissionTheme.danger)
                 .accessibilityLabel("Mark routine as fail")
 
-                Button {
+                RoutineOutcomeButton(
+                    title: "Success",
+                    systemImage: "checkmark",
+                    tint: MissionTheme.success
+                ) {
                     onDone(candidate.item)
-                } label: {
-                    Label("Success", systemImage: "checkmark")
-                        .frame(maxWidth: .infinity)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
                 }
-                .missionLiquidButton(.prominent)
-                .tint(MissionTheme.success)
                 .accessibilityLabel("Mark routine as success")
             }
             .font(.caption.weight(.semibold))
@@ -365,6 +360,31 @@ struct CalendarNowModeCard: View {
             .buttonBorderShape(.circle)
             .accessibilityLabel("Add routine")
         }
+    }
+}
+
+private struct RoutineOutcomeButton: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ViewThatFits(in: .horizontal) {
+                Label(title, systemImage: systemImage)
+                    .labelStyle(.titleAndIcon)
+                    .lineLimit(1)
+
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.bold))
+            }
+            .minimumScaleFactor(0.76)
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
+        }
+        .missionLiquidButton(.prominent)
+        .tint(tint)
     }
 }
 

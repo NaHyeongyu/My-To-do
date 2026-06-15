@@ -35,6 +35,9 @@ struct StreakPageView: View {
                 metricGrid
                 StreakDayRail(days: stats.days)
                 timeCard
+                if mode == .week {
+                    routineLabelTimeCard
+                }
                 historySection
             }
             .padding(.horizontal, 16)
@@ -162,6 +165,35 @@ struct StreakPageView: View {
         }
     }
 
+    private var routineLabelTimeCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Weekly routine hours")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(TaskListPalette.primaryText)
+
+                Spacer(minLength: 8)
+
+                Text(stats.weeklyRoutineLabelTotalText)
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(TaskListPalette.secondaryText)
+                    .lineLimit(1)
+            }
+
+            VStack(spacing: 12) {
+                ForEach(stats.weeklyRoutineLabelSummaries) { summary in
+                    StreakRoutineLabelTimeRow(summary: summary)
+                }
+            }
+        }
+        .padding(14)
+        .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(TaskListPalette.separator.opacity(0.28), lineWidth: 0.5)
+        }
+    }
+
     private var historySection: some View {
         VStack(alignment: .leading, spacing: 12) {
             historyGroup(
@@ -180,10 +212,15 @@ struct StreakPageView: View {
                 title: "Completed routines",
                 emptyTitle: "No completed routines",
                 rows: stats.completedRoutineOccurrences.map { occurrence in
-                    StreakHistoryRowData(
+                    let dateText = occurrence.date.formatted(.dateTime.locale(.enUS).weekday(.abbreviated).month(.abbreviated).day())
+                    let detailText = [occurrence.label?.title, dateText]
+                        .compactMap(\.self)
+                        .joined(separator: " · ")
+
+                    return StreakHistoryRowData(
                         id: occurrence.id,
                         title: occurrence.title,
-                        detail: occurrence.date.formatted(.dateTime.locale(.enUS).weekday(.abbreviated).month(.abbreviated).day())
+                        detail: detailText
                     )
                 }
             )
@@ -299,6 +336,7 @@ private struct StreakStats {
     let days: [StreakDaySummary]
     let completedTasks: [ScheduleItem]
     let completedRoutineOccurrences: [StreakRoutineOccurrence]
+    let weeklyRoutineLabelSummaries: [RoutineLabelTimeSummary]
 
     private let scheduledOccurrences: [StreakRoutineOccurrence]
 
@@ -314,9 +352,13 @@ private struct StreakStats {
         let analysisEnd = min(period.end, tomorrowStart)
         let routineItems = items.filter { $0.kind == .routine }
         let includedDates = Self.dates(from: period.start, to: analysisEnd, calendar: calendar)
+        let weeklyTargetDates = period.mode == .week
+            ? Self.dates(from: period.start, to: period.end, calendar: calendar)
+            : includedDates
 
         var allOccurrences: [StreakRoutineOccurrence] = []
         var dailySummaries: [StreakDaySummary] = []
+        var weeklyLabelOccurrences: [StreakRoutineOccurrence] = []
 
         for date in includedDates {
             let routines = routineItems
@@ -344,6 +386,7 @@ private struct StreakStats {
                     id: "\(routine.id.uuidString)-\(date.timeIntervalSince1970)",
                     routineID: routine.id,
                     title: routine.title,
+                    label: routine.routineLabel,
                     date: date,
                     status: effectiveStatus,
                     minutes: routine.durationMinutes(calendar: calendar)
@@ -352,6 +395,42 @@ private struct StreakStats {
 
             allOccurrences.append(contentsOf: occurrences)
             dailySummaries.append(StreakDaySummary(date: date, occurrences: occurrences, calendar: calendar))
+        }
+
+        for date in weeklyTargetDates {
+            let routines = routineItems
+                .filter { $0.taskDate == nil && Self.isRoutine($0, scheduledOn: date, calendar: calendar) }
+                .sorted {
+                    calendar.minuteOfDay(for: $0.startTime ?? .distantFuture)
+                        < calendar.minuteOfDay(for: $1.startTime ?? .distantFuture)
+                }
+
+            let occurrences = routines.map { routine in
+                let state = routineStates.state(for: routine, on: date, calendar: calendar)
+                let status = state?.status ?? .pending
+                let effectiveStatus: StreakOccurrenceStatus
+
+                switch status {
+                case .done:
+                    effectiveStatus = .done
+                case .skipped:
+                    effectiveStatus = .skipped
+                case .pending:
+                    effectiveStatus = date < todayStart ? .missed : .open
+                }
+
+                return StreakRoutineOccurrence(
+                    id: "label-\(routine.id.uuidString)-\(date.timeIntervalSince1970)",
+                    routineID: routine.id,
+                    title: routine.title,
+                    label: routine.routineLabel,
+                    date: date,
+                    status: effectiveStatus,
+                    minutes: routine.durationMinutes(calendar: calendar)
+                )
+            }
+
+            weeklyLabelOccurrences.append(contentsOf: occurrences)
         }
 
         self.scheduledOccurrences = allOccurrences
@@ -365,6 +444,19 @@ private struct StreakStats {
                 return period.contains(completedAt)
             }
             .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+        self.weeklyRoutineLabelSummaries = RoutineLabel.allCases.map { label in
+            let labelOccurrences = weeklyLabelOccurrences.filter { $0.label == Optional(label) }
+            let plannedMinutes = labelOccurrences.reduce(0) { $0 + $1.minutes }
+            let completedMinutes = labelOccurrences
+                .filter { $0.status == .done }
+                .reduce(0) { $0 + $1.minutes }
+
+            return RoutineLabelTimeSummary(
+                label: label,
+                plannedMinutes: plannedMinutes,
+                completedMinutes: completedMinutes
+            )
+        }
     }
 
     var scheduledRoutines: Int {
@@ -424,6 +516,12 @@ private struct StreakStats {
 
     var completedRoutineTimeText: String {
         completedRoutineMinutes.readableDuration
+    }
+
+    var weeklyRoutineLabelTotalText: String {
+        let completedMinutes = weeklyRoutineLabelSummaries.reduce(0) { $0 + $1.completedMinutes }
+        let plannedMinutes = weeklyRoutineLabelSummaries.reduce(0) { $0 + $1.plannedMinutes }
+        return "\(completedMinutes.readableDuration) / \(plannedMinutes.readableDuration)"
     }
 
     private static func dates(from start: Date, to end: Date, calendar: Calendar) -> [Date] {
@@ -491,9 +589,27 @@ private struct StreakRoutineOccurrence: Identifiable {
     let id: String
     let routineID: UUID
     let title: String
+    let label: RoutineLabel?
     let date: Date
     let status: StreakOccurrenceStatus
     let minutes: Int
+}
+
+private struct RoutineLabelTimeSummary: Identifiable {
+    let label: RoutineLabel
+    let plannedMinutes: Int
+    let completedMinutes: Int
+
+    var id: String { label.rawValue }
+
+    var fraction: Double {
+        guard plannedMinutes > 0 else { return 0 }
+        return Double(completedMinutes) / Double(plannedMinutes)
+    }
+
+    var detailText: String {
+        "\(completedMinutes.readableDuration) / \(plannedMinutes.readableDuration)"
+    }
 }
 
 private enum StreakOccurrenceStatus {
@@ -533,6 +649,50 @@ private struct StreakMetricCard: View {
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(TaskListPalette.separator.opacity(0.28), lineWidth: 0.5)
+        }
+    }
+}
+
+private struct StreakRoutineLabelTimeRow: View {
+    let summary: RoutineLabelTimeSummary
+
+    private var tint: Color {
+        switch summary.label {
+        case .study:
+            MissionTheme.accent
+        case .coding:
+            TaskListPalette.secondaryText
+        case .life:
+            TaskListPalette.primaryText
+        case .play:
+            TaskListPalette.tertiaryText
+        case .hobby:
+            MissionTheme.secondaryText
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Label(summary.label.title, systemImage: summary.label.symbolName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(TaskListPalette.primaryText)
+                    .lineLimit(1)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(TaskListPalette.fill, in: Capsule(style: .continuous))
+
+                Spacer(minLength: 8)
+
+                Text(summary.detailText)
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(TaskListPalette.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+
+            ProgressView(value: summary.fraction)
+                .tint(tint)
         }
     }
 }

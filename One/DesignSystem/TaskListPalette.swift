@@ -10,4 +10,6 @@ enum TaskListPalette {
     static let selectedText = Color(uiColor: .systemBackground)
     static let separator = Color(uiColor: .separator)
     static let fill = Color(uiColor: .tertiarySystemFill)
+    static let glassStroke = Color(uiColor: .separator).opacity(0.38)
+    static let focusedGlassStroke = Color(uiColor: .label).opacity(0.28)
 }

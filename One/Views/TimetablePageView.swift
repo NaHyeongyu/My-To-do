@@ -121,6 +121,7 @@ struct TimetablePageView: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.title2.weight(.semibold))
+                        .foregroundStyle(MissionTheme.floatingButtonSymbol)
                         .frame(width: 54, height: 54)
                 }
                 .missionLiquidButton(.prominent)

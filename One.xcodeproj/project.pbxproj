@@ -27,6 +27,8 @@
 		B20001082C1C0001000A1001 /* PanelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000082C1C0001000A1001 /* PanelViews.swift */; };
 		F10001012C210001000A1001 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000012C210001000A1001 /* AppSettings.swift */; };
 		F10001022C210001000A1001 /* SettingsPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000022C210001000A1001 /* SettingsPageView.swift */; };
+		F20001012C220001000A1001 /* NotificationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000012C220001000A1001 /* NotificationDelegate.swift */; };
+		F20001022C220001000A1001 /* RoutineNotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000022C220001000A1001 /* RoutineNotificationScheduler.swift */; };
 		E10001012C1F0001000A1001 /* TaskListPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000012C1F0001000A1001 /* TaskListPalette.swift */; };
 		E10001032C1F0001000A1001 /* CompletedTasksPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000032C1F0001000A1001 /* CompletedTasksPageView.swift */; };
 		E10001042C1F0001000A1001 /* ScheduleEditorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000042C1F0001000A1001 /* ScheduleEditorControls.swift */; };
@@ -89,6 +91,8 @@
 		B200000A2C1C0001000A1001 /* TimelineViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineViews.swift; sourceTree = "<group>"; };
 		F10000012C210001000A1001 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		F10000022C210001000A1001 /* SettingsPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPageView.swift; sourceTree = "<group>"; };
+		F20000012C220001000A1001 /* NotificationDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationDelegate.swift; sourceTree = "<group>"; };
+		F20000022C220001000A1001 /* RoutineNotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineNotificationScheduler.swift; sourceTree = "<group>"; };
 		E10000012C1F0001000A1001 /* TaskListPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskListPalette.swift; sourceTree = "<group>"; };
 		E10000032C1F0001000A1001 /* CompletedTasksPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletedTasksPageView.swift; sourceTree = "<group>"; };
 		E10000042C1F0001000A1001 /* ScheduleEditorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleEditorControls.swift; sourceTree = "<group>"; };
@@ -152,6 +156,7 @@
 				C00100042C1D0001000A1001 /* Info.plist */,
 				C00100022C1D0001000A1001 /* WidgetSnapshotWriter.swift */,
 				C00100032C1D0001000A1001 /* One.entitlements */,
+				F20002012C220001000A1001 /* Services */,
 				2A2F5F142C1C0001000A1001 /* Models */,
 				B20002012C1C0001000A1001 /* Navigation */,
 				2A2F5F152C1C0001000A1001 /* Views */,
@@ -159,6 +164,15 @@
 				2A2F5F392C1C0001000A1001 /* Assets.xcassets */,
 			);
 			path = One;
+			sourceTree = "<group>";
+		};
+		F20002012C220001000A1001 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				F20000012C220001000A1001 /* NotificationDelegate.swift */,
+				F20000022C220001000A1001 /* RoutineNotificationScheduler.swift */,
+			);
+			path = Services;
 			sourceTree = "<group>";
 		};
 		2A2F5F142C1C0001000A1001 /* Models */ = {
@@ -356,6 +370,8 @@
 				B20001042C1C0001000A1001 /* MissionTheme.swift in Sources */,
 				B20001052C1C0001000A1001 /* MissionViewModifiers.swift in Sources */,
 				F10001012C210001000A1001 /* AppSettings.swift in Sources */,
+				F20001012C220001000A1001 /* NotificationDelegate.swift in Sources */,
+				F20001022C220001000A1001 /* RoutineNotificationScheduler.swift in Sources */,
 				E10001012C1F0001000A1001 /* TaskListPalette.swift in Sources */,
 				B20001062C1C0001000A1001 /* ViewFormatting.swift in Sources */,
 				B20001072C1C0001000A1001 /* EmptyStateView.swift in Sources */,
@@ -516,7 +532,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = One/One.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = U9385H3C5Q;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
@@ -546,7 +562,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = One/One.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = U9385H3C5Q;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
@@ -575,7 +591,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = OneWidgets/OneWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = U9385H3C5Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -606,7 +622,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = OneWidgets/OneWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = U9385H3C5Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;

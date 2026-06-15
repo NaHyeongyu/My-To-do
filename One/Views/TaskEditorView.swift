@@ -15,6 +15,7 @@ struct ScheduleItemEditorView: View {
     @State private var startTime: Date
     @State private var endTime: Date
     @State private var repeatWeekdayMask: Int
+    @State private var routineLabel: RoutineLabel?
     @State private var showsDeleteConfirmation = false
 
     init(item: ScheduleItem? = nil, kind: ScheduleKind = .task, initialDate: Date? = nil) {
@@ -40,6 +41,7 @@ struct ScheduleItemEditorView: View {
         _startTime = State(initialValue: calendar.dateBySnappingToFiveMinute(item?.startTime ?? defaultStart))
         _endTime = State(initialValue: calendar.dateBySnappingToFiveMinute(item?.endTime ?? defaultEnd))
         _repeatWeekdayMask = State(initialValue: item?.repeatWeekdayMask ?? defaultRepeatWeekdayMask)
+        _routineLabel = State(initialValue: item?.routineLabel)
     }
 
     var body: some View {
@@ -57,6 +59,7 @@ struct ScheduleItemEditorView: View {
 
                 switch kind {
                 case .routine:
+                    routineLabelSection
                     routineSection
                     if !isDateAnchoredRoutine {
                         repeatSection
@@ -116,10 +119,45 @@ struct ScheduleItemEditorView: View {
             FiveMinuteTimePickerRow(title: "Start", selection: $startTime)
             FiveMinuteTimePickerRow(title: "End", selection: $endTime)
 
-            if !hasValidRoutineTime {
-                Text("End time must be after start time.")
+            if routineEndsNextDay {
+                Text("Ends next day.")
                     .font(.footnote)
-                    .foregroundStyle(MissionTheme.danger)
+                    .foregroundStyle(MissionTheme.secondaryText)
+            }
+        }
+    }
+
+    private var routineLabelSection: some View {
+        Section("Label") {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 10),
+                    GridItem(.flexible(), spacing: 10)
+                ],
+                spacing: 10
+            ) {
+                ForEach(RoutineLabel.allCases) { label in
+                    Button {
+                        withAnimation(.snappy(duration: 0.18)) {
+                            routineLabel = routineLabel == label ? nil : label
+                        }
+                    } label: {
+                        Label(label.title, systemImage: label.symbolName)
+                            .font(.subheadline.weight(.semibold))
+                            .labelStyle(.titleAndIcon)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .foregroundStyle(routineLabel == label ? MissionTheme.selectedText : MissionTheme.graphite)
+                            .background(
+                                routineLabel == label ? MissionTheme.selection : MissionTheme.controlFill,
+                                in: Capsule(style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(routineLabel == label ? .isSelected : [])
+                }
             }
         }
     }
@@ -173,7 +211,22 @@ struct ScheduleItemEditorView: View {
         let calendar = Calendar.current
         let snappedStartTime = calendar.dateBySnappingToFiveMinute(startTime)
         let snappedEndTime = calendar.dateBySnappingToFiveMinute(endTime)
-        return calendar.minuteOfDay(for: snappedEndTime) > calendar.minuteOfDay(for: snappedStartTime)
+        return ScheduleItem.durationMinutes(
+            startTime: snappedStartTime,
+            endTime: snappedEndTime,
+            calendar: calendar
+        ) > 0
+    }
+
+    private var routineEndsNextDay: Bool {
+        let calendar = Calendar.current
+        let snappedStartTime = calendar.dateBySnappingToFiveMinute(startTime)
+        let snappedEndTime = calendar.dateBySnappingToFiveMinute(endTime)
+        return ScheduleItem.crossesMidnight(
+            startTime: snappedStartTime,
+            endTime: snappedEndTime,
+            calendar: calendar
+        )
     }
 
     private var isSaveDisabled: Bool {
@@ -214,7 +267,8 @@ struct ScheduleItemEditorView: View {
                     startTime: snappedStartTime,
                     endTime: snappedEndTime,
                     repeatWeekdayMask: routineRepeatWeekdayMask,
-                    activeFrom: todayStart
+                    activeFrom: todayStart,
+                    routineLabel: routineLabel
                 )
                 modelContext.insert(newItem)
                 moveCurrentRoutineStates(from: item.id, to: newItem.id, startingAt: todayStart)
@@ -232,6 +286,7 @@ struct ScheduleItemEditorView: View {
                     item.repeatWeekdayMask = routineRepeatWeekdayMask
                     item.activeFrom = routineDate == nil ? (item.activeFrom ?? todayStart) : nil
                     item.activeUntil = nil
+                    item.routineLabel = routineLabel
                 case .task:
                     item.taskDate = taskDate
                     item.startTime = nil
@@ -239,6 +294,7 @@ struct ScheduleItemEditorView: View {
                     item.repeatWeekdayMask = 0
                     item.activeFrom = nil
                     item.activeUntil = nil
+                    item.routineLabelRawValue = nil
                 }
             }
         } else {
@@ -250,11 +306,13 @@ struct ScheduleItemEditorView: View {
                 startTime: kind == .routine ? snappedStartTime : nil,
                 endTime: kind == .routine ? snappedEndTime : nil,
                 repeatWeekdayMask: kind == .routine ? routineRepeatWeekdayMask : 0,
-                activeFrom: kind == .routine && routineDate == nil ? todayStart : nil
+                activeFrom: kind == .routine && routineDate == nil ? todayStart : nil,
+                routineLabel: kind == .routine ? routineLabel : nil
             )
             modelContext.insert(newItem)
         }
 
+        try? modelContext.save()
         dismiss()
     }
 

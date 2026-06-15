@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct OneApp: App {
+    @UIApplicationDelegateAdaptor(NotificationDelegate.self) private var notificationDelegate
     @AppStorage(AppSettingsKey.themeMode) private var themeModeRaw = AppThemeMode.system.rawValue
 
     var body: some Scene {

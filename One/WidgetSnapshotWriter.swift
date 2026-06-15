@@ -24,7 +24,7 @@ enum WidgetSnapshotWriter {
                     id: item.id,
                     title: item.title,
                     startTimeText: timeText(for: startDate),
-                    endTimeText: timeText(for: endDate),
+                    endTimeText: endTimeText(for: item, endDate: endDate, calendar: calendar),
                     startDate: startDate,
                     endDate: endDate,
                     outcome: outcome(for: state)
@@ -44,11 +44,18 @@ enum WidgetSnapshotWriter {
                 tasks: Array(tasks)
             )
         )
+        WidgetCenter.shared.reloadTimelines(ofKind: "TodayOverviewWidget")
+        WidgetCenter.shared.reloadTimelines(ofKind: "RoutineCheckInWidget")
         WidgetCenter.shared.reloadAllTimelines()
     }
 
     private static func timeText(for date: Date) -> String {
         date.formatted(.dateTime.hour().minute())
+    }
+
+    private static func endTimeText(for item: ScheduleItem, endDate: Date, calendar: Calendar) -> String {
+        let suffix = item.crossesMidnight(calendar: calendar) ? " +1d" : ""
+        return "\(timeText(for: endDate))\(suffix)"
     }
 
     private static func outcome(for state: RoutineOccurrenceState?) -> WidgetRoutineOutcome {

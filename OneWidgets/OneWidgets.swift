@@ -316,10 +316,15 @@ struct RoutineCheckInWidgetView: View {
                     .lineLimit(1)
 
                 if routine.outcome.isResolved {
-                    Label(routine.outcome.title, systemImage: routine.outcome.symbolName)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(routine.outcome == .success ? .green : .red)
-                        .labelStyle(.titleAndIcon)
+                    ViewThatFits(in: .horizontal) {
+                        Label(routine.outcome.title, systemImage: routine.outcome.symbolName)
+                            .labelStyle(.titleAndIcon)
+
+                        Image(systemName: routine.outcome.symbolName)
+                    }
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(routine.outcome == .success ? .green : .red)
+                    .lineLimit(1)
                 }
             }
         }

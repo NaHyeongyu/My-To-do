@@ -78,6 +78,9 @@ struct SettingsPageView: View {
     private func setNotificationPreference(_ isEnabled: Bool) {
         guard isEnabled else {
             notificationsEnabled = false
+            Task {
+                await RoutineNotificationScheduler.shared.cancelRoutineNotifications()
+            }
             return
         }
 

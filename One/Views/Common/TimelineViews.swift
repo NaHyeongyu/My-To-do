@@ -5,7 +5,10 @@ enum TimelineLayout {
     static let timeColumnWidth: CGFloat = 54
     static let topContentInset: CGFloat = 22
     static let eventMinWidth: CGFloat = 120
-    static let eventMinHeight: CGFloat = 42
+    static let eventMinHeight: CGFloat = 48
+    static let eventLeadingInset: CGFloat = timeColumnWidth + 12
+    static let eventTrailingInset: CGFloat = 12
+    static let eventColumnSpacing: CGFloat = 4
 
     static func contentHeight(startHour: Int, endHour: Int) -> CGFloat {
         topContentInset + CGFloat(endHour - startHour) * hourHeight
@@ -22,7 +25,112 @@ enum TimelineLayout {
     }
 
     static func eventHeight(for item: ScheduleItem, calendar: Calendar) -> CGFloat {
-        max(eventMinHeight, CGFloat(max(30, item.durationMinutes(calendar: calendar))) / 60 * hourHeight - 6)
+        let startMinute = calendar.minuteOfDay(for: item.startTime ?? .now)
+        let visibleMinutes = min(
+            item.durationMinutes(calendar: calendar),
+            max(0, ScheduleItem.minutesPerDay - startMinute)
+        )
+
+        return max(eventMinHeight, CGFloat(max(30, visibleMinutes)) / 60 * hourHeight - 6)
+    }
+
+    static func eventLayouts(
+        for items: [ScheduleItem],
+        in width: CGFloat,
+        startHour: Int,
+        calendar: Calendar,
+        fallbackDate: Date = .now,
+        delayMinutes: (ScheduleItem) -> Int = { _ in 0 }
+    ) -> [TimelineEventLayout] {
+        let rawEvents = items.compactMap { item -> RawTimelineEvent? in
+            let startMinute = calendar.minuteOfDay(for: item.startTime ?? fallbackDate) + delayMinutes(item)
+            guard startMinute < ScheduleItem.minutesPerDay, startMinute < startHour * 60 + ScheduleItem.minutesPerDay else {
+                return nil
+            }
+
+            let top = topContentInset
+                + CGFloat(max(0, startMinute - startHour * 60)) / 60 * hourHeight
+                + 3
+            let height = eventHeight(startMinute: startMinute, durationMinutes: item.durationMinutes(calendar: calendar))
+            return RawTimelineEvent(item: item, top: top, height: height)
+        }
+        .sorted {
+            if $0.top != $1.top {
+                return $0.top < $1.top
+            }
+
+            return $0.bottom > $1.bottom
+        }
+
+        let groups = grouped(rawEvents)
+        let availableWidth = max(44, width - eventLeadingInset - eventTrailingInset)
+
+        return groups.flatMap { group in
+            columned(group, availableWidth: availableWidth)
+        }
+    }
+
+    private static func eventHeight(startMinute: Int, durationMinutes: Int) -> CGFloat {
+        let visibleMinutes = min(
+            durationMinutes,
+            max(0, ScheduleItem.minutesPerDay - startMinute)
+        )
+
+        return max(eventMinHeight, CGFloat(max(30, visibleMinutes)) / 60 * hourHeight - 6)
+    }
+
+    private static func grouped(_ events: [RawTimelineEvent]) -> [[RawTimelineEvent]] {
+        var groups: [[RawTimelineEvent]] = []
+        var currentGroup: [RawTimelineEvent] = []
+        var currentBottom: CGFloat = 0
+
+        for event in events {
+            if currentGroup.isEmpty || event.top < currentBottom {
+                currentGroup.append(event)
+                currentBottom = max(currentBottom, event.bottom)
+            } else {
+                groups.append(currentGroup)
+                currentGroup = [event]
+                currentBottom = event.bottom
+            }
+        }
+
+        if !currentGroup.isEmpty {
+            groups.append(currentGroup)
+        }
+
+        return groups
+    }
+
+    private static func columned(_ group: [RawTimelineEvent], availableWidth: CGFloat) -> [TimelineEventLayout] {
+        var active: [(column: Int, bottom: CGFloat)] = []
+        var assigned: [(event: RawTimelineEvent, column: Int)] = []
+        var maxColumn = 0
+
+        for event in group {
+            active.removeAll { $0.bottom <= event.top }
+
+            let occupiedColumns = Set(active.map(\.column))
+            let column = (0...group.count).first { !occupiedColumns.contains($0) } ?? 0
+            active.append((column: column, bottom: event.bottom))
+            maxColumn = max(maxColumn, column)
+            assigned.append((event: event, column: column))
+        }
+
+        let columnCount = maxColumn + 1
+        let totalSpacing = eventColumnSpacing * CGFloat(max(0, columnCount - 1))
+        let columnWidth = max(44, (availableWidth - totalSpacing) / CGFloat(columnCount))
+
+        return assigned.map { assignment in
+            let x = eventLeadingInset + CGFloat(assignment.column) * (columnWidth + eventColumnSpacing)
+            return TimelineEventLayout(
+                item: assignment.event.item,
+                top: assignment.event.top,
+                width: columnWidth,
+                height: assignment.event.height,
+                x: x
+            )
+        }
     }
 
     static func currentTimeTop(now: Date, startHour: Int, endHour: Int, calendar: Calendar) -> CGFloat? {
@@ -35,6 +143,32 @@ enum TimelineLayout {
         }
 
         return CGFloat(currentMinute - startMinute) / 60 * hourHeight
+    }
+}
+
+struct TimelineEventLayout: Identifiable {
+    let item: ScheduleItem
+    let top: CGFloat
+    let width: CGFloat
+    let height: CGFloat
+    let x: CGFloat
+
+    var id: UUID {
+        item.id
+    }
+
+    var isCompact: Bool {
+        height < 62 || width < 136
+    }
+}
+
+private struct RawTimelineEvent {
+    let item: ScheduleItem
+    let top: CGFloat
+    let height: CGFloat
+
+    var bottom: CGFloat {
+        top + height
     }
 }
 

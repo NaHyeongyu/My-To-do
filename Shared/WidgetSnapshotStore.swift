@@ -108,6 +108,7 @@ enum WidgetSnapshotStore {
     static func save(_ snapshot: WidgetSnapshot) {
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         defaults.set(data, forKey: snapshotKey)
+        defaults.synchronize()
     }
 
     private static var defaults: UserDefaults {

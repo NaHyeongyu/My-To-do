@@ -22,6 +22,11 @@ enum MissionTheme {
     )
     static let eventIndicator = Color(uiColor: .label)
     static let selectedText = Color(uiColor: .systemBackground)
+    static let floatingButtonSymbol = Color(
+        uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? .black : .systemBackground
+        }
+    )
     static let separator = Color(uiColor: .separator)
     static let success = Color(uiColor: .systemGreen)
     static let warning = Color(uiColor: .secondaryLabel)

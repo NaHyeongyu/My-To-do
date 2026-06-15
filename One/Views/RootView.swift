@@ -1,8 +1,11 @@
 import SwiftData
 import SwiftUI
+import UserNotifications
 
 struct RootView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(AppSettingsKey.notificationsEnabled) private var notificationsEnabled = false
 
     @Query(sort: \ScheduleItem.createdAt, order: .reverse) private var items: [ScheduleItem]
     @Query(sort: \RoutineOccurrenceState.updatedAt, order: .reverse) private var routineStates: [RoutineOccurrenceState]
@@ -33,7 +36,12 @@ struct RootView: View {
                 .tag(AppPage.settings)
         }
         .tint(MissionTheme.accent)
-        .sheet(item: $editorMode) { mode in
+        .sheet(
+            item: $editorMode,
+            onDismiss: {
+                saveAndUpdateWidgetSnapshot(deferred: true)
+            }
+        ) { mode in
             switch mode {
             case let .new(kind, initialDate):
                 ScheduleItemEditorView(kind: kind, initialDate: initialDate)
@@ -42,10 +50,26 @@ struct RootView: View {
             }
         }
         .onAppear {
-            updateWidgetSnapshot()
+            checkNotificationPermissionOnLaunch()
+            saveAndUpdateWidgetSnapshot()
+            syncRoutineNotifications()
         }
         .onChange(of: widgetSnapshotSignature) { _, _ in
-            updateWidgetSnapshot()
+            updateWidgetSnapshot(deferred: true)
+        }
+        .onChange(of: routineNotificationSignature) { _, _ in
+            syncRoutineNotifications()
+        }
+        .onChange(of: notificationsEnabled) { _, _ in
+            syncRoutineNotifications()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active || phase == .background {
+                saveAndUpdateWidgetSnapshot(deferred: phase == .active)
+            }
+            if phase == .active {
+                syncRoutineNotifications()
+            }
         }
         .onOpenURL { url in
             handleDeepLink(url)
@@ -66,7 +90,8 @@ struct RootView: View {
                     item.endTime?.timeIntervalSince1970.description ?? "",
                     item.repeatWeekdayMask.description,
                     item.activeFrom?.timeIntervalSince1970.description ?? "",
-                    item.activeUntil?.timeIntervalSince1970.description ?? ""
+                    item.activeUntil?.timeIntervalSince1970.description ?? "",
+                    item.routineLabelRawValue ?? ""
                 ].joined(separator: "|")
             }
             .joined(separator: ";")
@@ -84,9 +109,88 @@ struct RootView: View {
         return "\(itemSignature)#\(stateSignature)"
     }
 
-    private func updateWidgetSnapshot(replacing updatedState: RoutineOccurrenceState? = nil) {
-        let states = routineStatesForWidget(replacing: updatedState)
-        WidgetSnapshotWriter.save(items: items, routineStates: states)
+    private var routineNotificationSignature: String {
+        items
+            .filter { $0.kind == .routine }
+            .map { item in
+                [
+                    item.id.uuidString,
+                    item.title,
+                    item.notes,
+                    item.taskDate?.timeIntervalSince1970.description ?? "",
+                    item.startTime?.timeIntervalSince1970.description ?? "",
+                    item.endTime?.timeIntervalSince1970.description ?? "",
+                    item.repeatWeekdayMask.description,
+                    item.activeFrom?.timeIntervalSince1970.description ?? "",
+                    item.activeUntil?.timeIntervalSince1970.description ?? ""
+                ].joined(separator: "|")
+            }
+            .joined(separator: ";")
+    }
+
+    private func saveAndUpdateWidgetSnapshot(deferred: Bool = false) {
+        try? modelContext.save()
+        updateWidgetSnapshot(deferred: deferred)
+        syncRoutineNotifications()
+    }
+
+    private func checkNotificationPermissionOnLaunch() {
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                let granted = (try? await center.requestAuthorization(options: [.alert, .badge, .sound])) ?? false
+                let updatedSettings = await center.notificationSettings()
+
+                await MainActor.run {
+                    notificationsEnabled = granted && updatedSettings.authorizationStatus.allowsLaunchNotifications
+                }
+            case .authorized, .provisional, .ephemeral:
+                await MainActor.run {
+                    if UserDefaults.standard.object(forKey: AppSettingsKey.notificationsEnabled) == nil {
+                        notificationsEnabled = true
+                    }
+                }
+            case .denied:
+                await MainActor.run {
+                    notificationsEnabled = false
+                }
+                await RoutineNotificationScheduler.shared.cancelRoutineNotifications()
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    private func syncRoutineNotifications() {
+        let schedules = items.compactMap(RoutineNotificationSchedule.init(item:))
+
+        Task {
+            await RoutineNotificationScheduler.shared.syncNotifications(
+                enabled: notificationsEnabled,
+                for: schedules
+            )
+        }
+    }
+
+    private func updateWidgetSnapshot(
+        replacing updatedState: RoutineOccurrenceState? = nil,
+        deferred: Bool = false
+    ) {
+        let writeSnapshot = {
+            let states = routineStatesForWidget(replacing: updatedState)
+            WidgetSnapshotWriter.save(items: items, routineStates: states)
+        }
+
+        if deferred {
+            DispatchQueue.main.async {
+                writeSnapshot()
+            }
+        } else {
+            writeSnapshot()
+        }
     }
 
     @discardableResult
@@ -239,7 +343,10 @@ struct RootView: View {
             )
         case .tasks:
             TasksPageView(
-                items: items
+                items: items,
+                onItemsChanged: {
+                    saveAndUpdateWidgetSnapshot(deferred: true)
+                }
             )
         case .routines:
             RoutinePlannerPageView(
@@ -274,4 +381,17 @@ private enum EditorMode: Identifiable {
 #Preview {
     RootView()
         .modelContainer(for: [ScheduleItem.self, RoutineOccurrenceState.self], inMemory: true)
+}
+
+private extension UNAuthorizationStatus {
+    var allowsLaunchNotifications: Bool {
+        switch self {
+        case .authorized, .provisional, .ephemeral:
+            true
+        case .notDetermined, .denied:
+            false
+        @unknown default:
+            false
+        }
+    }
 }
