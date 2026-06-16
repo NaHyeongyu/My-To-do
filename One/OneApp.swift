@@ -26,31 +26,23 @@ enum OneModelContainer {
         ])
         let configuration = ModelConfiguration(
             schema: schema,
-            cloudKitDatabase: .private(cloudKitContainerIdentifier)
+            cloudKitDatabase: .none
         )
 
         do {
             return try ModelContainer(for: schema, configurations: [configuration])
         } catch {
-            return fallbackContainer(for: schema, cloudKitError: error)
+            return fallbackContainer(for: schema, localError: error)
         }
     }
 
-    private static func fallbackContainer(for schema: Schema, cloudKitError: Error) -> ModelContainer {
-        let localConfiguration = ModelConfiguration(schema: schema)
-
+    private static func fallbackContainer(for schema: Schema, localError: Error) -> ModelContainer {
+        assertionFailure("Failed to create local SwiftData container: \(localError)")
+        let memoryConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         do {
-            return try ModelContainer(for: schema, configurations: [localConfiguration])
+            return try ModelContainer(for: schema, configurations: [memoryConfiguration])
         } catch {
-            assertionFailure(
-                "Failed to create SwiftData containers. CloudKit error: \(cloudKitError). Local error: \(error)"
-            )
-            let memoryConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            do {
-                return try ModelContainer(for: schema, configurations: [memoryConfiguration])
-            } catch {
-                preconditionFailure("Failed to create in-memory SwiftData container: \(error)")
-            }
+            preconditionFailure("Failed to create in-memory SwiftData container: \(error)")
         }
     }
 }
