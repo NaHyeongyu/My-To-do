@@ -241,7 +241,7 @@ struct StreakPageView: View {
                     StreakHistoryRowData(
                         id: "task-\(task.id.uuidString)",
                         title: task.title,
-                        detail: (task.completedAt ?? task.createdAt).formatted(.dateTime.locale(.enUS).month(.abbreviated).day())
+                        detail: (task.completedAt ?? task.createdAt).formatted(.dateTime.month(.abbreviated).day())
                     )
                 }
             )
@@ -250,7 +250,7 @@ struct StreakPageView: View {
                 title: "Completed routines",
                 emptyTitle: "No completed routines",
                 rows: stats.completedRoutineOccurrences.map { occurrence in
-                    let dateText = occurrence.date.formatted(.dateTime.locale(.enUS).weekday(.abbreviated).month(.abbreviated).day())
+                    let dateText = occurrence.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
                     let detailText = [occurrence.label?.title, dateText]
                         .compactMap(\.self)
                         .joined(separator: " · ")
@@ -367,9 +367,9 @@ private struct StreakPeriod {
         switch mode {
         case .week:
             let endDate = calendar.date(byAdding: .day, value: -1, to: end) ?? end
-            return "\(start.formatted(.dateTime.locale(.enUS).month(.abbreviated).day())) - \(endDate.formatted(.dateTime.locale(.enUS).month(.abbreviated).day()))"
+            return "\(start.formatted(.dateTime.month(.abbreviated).day())) - \(endDate.formatted(.dateTime.month(.abbreviated).day()))"
         case .month:
-            return start.formatted(.dateTime.locale(.enUS).month(.wide).year())
+            return start.formatted(.dateTime.month(.wide).year())
         }
     }
 
@@ -851,12 +851,16 @@ private struct StreakRoutineLabelTimeRow: View {
             MissionTheme.accent
         case .coding:
             TaskListPalette.secondaryText
+        case .work:
+            TaskListPalette.primaryText
         case .life:
             TaskListPalette.primaryText
         case .play:
             TaskListPalette.tertiaryText
         case .hobby:
             MissionTheme.secondaryText
+        case .rest:
+            TaskListPalette.secondaryText
         case .sleep:
             Color(uiColor: .systemTeal)
         case .health:
@@ -1007,7 +1011,7 @@ private struct StreakDayCell: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Text(day.date.formatted(.dateTime.locale(.enUS).weekday(.narrow)))
+            Text(day.date.formatted(.dateTime.weekday(.narrow)))
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(TaskListPalette.tertiaryText)
                 .lineLimit(1)

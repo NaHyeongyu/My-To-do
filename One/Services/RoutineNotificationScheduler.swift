@@ -1,7 +1,7 @@
 import Foundation
 import UserNotifications
 
-struct RoutineNotificationSchedule {
+struct RoutineNotificationSchedule: Sendable {
     let routineID: UUID
     let title: String
     let notes: String
@@ -60,9 +60,13 @@ actor RoutineNotificationScheduler {
 
         await cancelRoutineNotifications()
 
-        let requests = notificationRequests(for: schedules, now: now, calendar: calendar)
-        for request in requests {
-            try? await add(request)
+        let requestPayloads = notificationRequestPayloads(for: schedules, now: now, calendar: calendar)
+        await withTaskGroup(of: Void.self) { group in
+            for payload in requestPayloads {
+                group.addTask {
+                    await Self.add(payload)
+                }
+            }
         }
     }
 
@@ -75,16 +79,16 @@ actor RoutineNotificationScheduler {
         center.removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 
-    private func notificationRequests(
+    private func notificationRequestPayloads(
         for schedules: [RoutineNotificationSchedule],
         now: Date,
         calendar: Calendar
-    ) -> [UNNotificationRequest] {
+    ) -> [RoutineNotificationRequestPayload] {
         schedules
             .flatMap { notificationEvents(for: $0, now: now, calendar: calendar) }
             .sorted { $0.fireDate < $1.fireDate }
             .prefix(maxScheduledNotifications)
-            .map { request(for: $0, calendar: calendar) }
+            .map { requestPayload(for: $0, calendar: calendar) }
     }
 
     private func notificationEvents(
@@ -141,33 +145,57 @@ actor RoutineNotificationScheduler {
         }
     }
 
-    private func request(
+    private func requestPayload(
         for event: RoutineNotificationEvent,
         calendar: Calendar
-    ) -> UNNotificationRequest {
-        let content = UNMutableNotificationContent()
-        content.title = event.kind.notificationTitle
-        content.body = event.schedule.title
-        content.sound = .default
-        content.threadIdentifier = "routine"
-        content.userInfo = [
-            "routineID": event.schedule.routineID.uuidString,
-            "dayStart": event.dayStart.timeIntervalSince1970,
-            "event": event.kind.rawValue
-        ]
-
-        if !event.schedule.notes.isEmpty {
-            content.subtitle = event.schedule.notes
-        }
-
+    ) -> RoutineNotificationRequestPayload {
         let components = calendar.dateComponents(
             [.year, .month, .day, .hour, .minute],
             from: event.fireDate
         )
+
+        return RoutineNotificationRequestPayload(
+            identifier: identifier(for: event),
+            title: event.kind.notificationTitle,
+            body: event.schedule.title,
+            subtitle: event.schedule.notes.isEmpty ? nil : event.schedule.notes,
+            routineID: event.schedule.routineID.uuidString,
+            dayStartTimestamp: event.dayStart.timeIntervalSince1970,
+            eventRawValue: event.kind.rawValue,
+            year: components.year,
+            month: components.month,
+            day: components.day,
+            hour: components.hour,
+            minute: components.minute
+        )
+    }
+
+    private static func request(for payload: RoutineNotificationRequestPayload) -> UNNotificationRequest {
+        let content = UNMutableNotificationContent()
+        content.title = payload.title
+        content.body = payload.body
+        content.sound = .default
+        content.threadIdentifier = "routine"
+        content.userInfo = [
+            "routineID": payload.routineID,
+            "dayStart": payload.dayStartTimestamp,
+            "event": payload.eventRawValue
+        ]
+
+        if let subtitle = payload.subtitle {
+            content.subtitle = subtitle
+        }
+
+        var components = DateComponents()
+        components.year = payload.year
+        components.month = payload.month
+        components.day = payload.day
+        components.hour = payload.hour
+        components.minute = payload.minute
         let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
 
         return UNNotificationRequest(
-            identifier: identifier(for: event),
+            identifier: payload.identifier,
             content: content,
             trigger: trigger
         )
@@ -195,7 +223,12 @@ actor RoutineNotificationScheduler {
         }
     }
 
-    private func add(_ request: UNNotificationRequest) async throws {
+    private static func add(_ payload: RoutineNotificationRequestPayload) async {
+        let request = request(for: payload)
+        try? await add(request, to: .current())
+    }
+
+    private static func add(_ request: UNNotificationRequest, to center: UNUserNotificationCenter) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             center.add(request) { error in
                 if let error {
@@ -280,7 +313,7 @@ actor RoutineNotificationScheduler {
     }
 }
 
-private enum RoutineNotificationEventKind: String, CaseIterable {
+private enum RoutineNotificationEventKind: String, CaseIterable, Sendable {
     case start
     case end
 
@@ -292,11 +325,26 @@ private enum RoutineNotificationEventKind: String, CaseIterable {
     }
 }
 
-private struct RoutineNotificationEvent {
+private struct RoutineNotificationEvent: Sendable {
     let kind: RoutineNotificationEventKind
     let schedule: RoutineNotificationSchedule
     let dayStart: Date
     let fireDate: Date
+}
+
+private struct RoutineNotificationRequestPayload: Sendable {
+    let identifier: String
+    let title: String
+    let body: String
+    let subtitle: String?
+    let routineID: String
+    let dayStartTimestamp: TimeInterval
+    let eventRawValue: String
+    let year: Int?
+    let month: Int?
+    let day: Int?
+    let hour: Int?
+    let minute: Int?
 }
 
 private extension UNAuthorizationStatus {

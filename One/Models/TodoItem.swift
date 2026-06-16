@@ -51,9 +51,11 @@ final class ScheduleItem: Identifiable {
 enum RoutineLabel: String, CaseIterable, Identifiable, Hashable {
     case study
     case coding
+    case work
     case life
     case play
     case hobby
+    case rest
     case sleep
     case health
     case money
@@ -66,9 +68,11 @@ enum RoutineLabel: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .study: "Study"
         case .coding: "Coding"
+        case .work: "Work"
         case .life: "Life"
         case .play: "Play"
         case .hobby: "Hobby"
+        case .rest: "Rest"
         case .sleep: "Sleep"
         case .health: "Health"
         case .money: "Money"
@@ -81,9 +85,11 @@ enum RoutineLabel: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .study: "book.closed.fill"
         case .coding: "chevron.left.forwardslash.chevron.right"
+        case .work: "briefcase.fill"
         case .life: "heart.fill"
         case .play: "gamecontroller.fill"
         case .hobby: "paintpalette.fill"
+        case .rest: "pause.circle.fill"
         case .sleep: "bed.double.fill"
         case .health: "figure.run"
         case .money: "banknote.fill"

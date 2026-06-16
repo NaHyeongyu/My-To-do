@@ -44,17 +44,18 @@ enum TimelineLayout {
         delayMinutes: (ScheduleItem) -> Int = { _ in 0 }
     ) -> [TimelineEventLayout] {
         let rawEvents = items.compactMap { item -> RawTimelineEvent? in
-            let startMinute = calendar.minuteOfDay(for: item.startTime ?? fallbackDate) + delayMinutes(item)
-            guard startMinute < ScheduleItem.minutesPerDay, startMinute < startHour * 60 + ScheduleItem.minutesPerDay else {
+            let delayedStartMinute = calendar.minuteOfDay(for: item.startTime ?? fallbackDate) + delayMinutes(item)
+            guard delayedStartMinute < ScheduleItem.minutesPerDay * 2 else {
                 return nil
             }
 
             let durationMinutes = item.durationMinutes(calendar: calendar)
-            let endMinute = min(ScheduleItem.minutesPerDay, startMinute + max(1, durationMinutes))
+            let startMinute = min(max(0, delayedStartMinute), ScheduleItem.minutesPerDay - 1)
+            let endMinute = min(ScheduleItem.minutesPerDay, max(startMinute + 1, delayedStartMinute + max(1, durationMinutes)))
             let top = topContentInset
                 + CGFloat(max(0, startMinute - startHour * 60)) / 60 * hourHeight
                 + 3
-            let height = eventHeight(startMinute: startMinute, durationMinutes: durationMinutes)
+            let height = eventHeight(startMinute: startMinute, durationMinutes: endMinute - startMinute)
             return RawTimelineEvent(
                 item: item,
                 startMinute: startMinute,

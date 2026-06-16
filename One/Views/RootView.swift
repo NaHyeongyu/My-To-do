@@ -2,6 +2,10 @@ import SwiftData
 import SwiftUI
 import UserNotifications
 
+#if canImport(UIKit)
+import UIKit
+#endif
+
 struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
@@ -194,12 +198,24 @@ struct RootView: View {
 
     private func syncRoutineNotifications() {
         let schedules = items.compactMap(RoutineNotificationSchedule.init(item:))
+        #if canImport(UIKit)
+        let backgroundTaskID = scenePhase == .background
+            ? UIApplication.shared.beginBackgroundTask(withName: "SyncRoutineNotifications", expirationHandler: nil)
+            : UIBackgroundTaskIdentifier.invalid
+        #endif
 
         Task {
             await RoutineNotificationScheduler.shared.syncNotifications(
                 enabled: notificationsEnabled,
                 for: schedules
             )
+            #if canImport(UIKit)
+            await MainActor.run {
+                if backgroundTaskID != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                }
+            }
+            #endif
         }
     }
 
