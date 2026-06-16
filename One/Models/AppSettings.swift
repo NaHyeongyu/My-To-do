@@ -3,31 +3,68 @@ import SwiftUI
 enum AppSettingsKey {
     static let notificationsEnabled = "settings.notificationsEnabled"
     static let themeMode = "settings.themeMode"
-
-    static func routineLabelWeeklyTargetMinutes(_ label: RoutineLabel) -> String {
-        "settings.routineLabelTargetMinutes.\(label.rawValue)"
-    }
+    static let customRoutineLabels = "settings.customRoutineLabels"
 }
 
-enum RoutineLabelTargetStore {
-    static let maximumWeeklyTargetMinutes = 7 * 24 * 60
-    static let targetStepMinutes = 30
+enum CustomRoutineLabelStore {
+    static let emptyStorage = "[]"
+    static let availableSymbolNames = [
+        "tag.fill",
+        "bolt.fill",
+        "target",
+        "brain.head.profile",
+        "flame.fill",
+        "clock.fill",
+        "chart.bar.fill",
+        "sparkles",
+        "lock.fill",
+        "star.fill"
+    ]
 
-    static func weeklyTargetMinutes(for label: RoutineLabel, defaults: UserDefaults = .standard) -> Int {
-        let key = AppSettingsKey.routineLabelWeeklyTargetMinutes(label)
-        guard defaults.object(forKey: key) != nil else {
-            return 0
-        }
-
-        return max(0, defaults.integer(forKey: key))
+    static func labels(defaults: UserDefaults = .standard) -> [CustomRoutineLabel] {
+        labels(from: defaults.string(forKey: AppSettingsKey.customRoutineLabels) ?? emptyStorage)
     }
 
-    static func setWeeklyTargetMinutes(_ minutes: Int, for label: RoutineLabel, defaults: UserDefaults = .standard) {
-        let snappedMinutes = max(
-            0,
-            min(maximumWeeklyTargetMinutes, (minutes / targetStepMinutes) * targetStepMinutes)
-        )
-        defaults.set(snappedMinutes, forKey: AppSettingsKey.routineLabelWeeklyTargetMinutes(label))
+    static func labels(from rawValue: String) -> [CustomRoutineLabel] {
+        guard
+            let data = rawValue.data(using: .utf8),
+            let labels = try? JSONDecoder().decode([CustomRoutineLabel].self, from: data)
+        else {
+            return []
+        }
+
+        return sanitized(labels)
+    }
+
+    static func encoded(_ labels: [CustomRoutineLabel]) -> String {
+        let sanitizedLabels = sanitized(labels)
+        guard
+            let data = try? JSONEncoder().encode(sanitizedLabels),
+            let rawValue = String(data: data, encoding: .utf8)
+        else {
+            return emptyStorage
+        }
+
+        return rawValue
+    }
+
+    static func save(_ labels: [CustomRoutineLabel], defaults: UserDefaults = .standard) {
+        defaults.set(encoded(labels), forKey: AppSettingsKey.customRoutineLabels)
+    }
+
+    private static func sanitized(_ labels: [CustomRoutineLabel]) -> [CustomRoutineLabel] {
+        var seenIDs: Set<String> = []
+        return labels.compactMap { label in
+            let title = label.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty, seenIDs.insert(label.id).inserted else {
+                return nil
+            }
+
+            let symbolName = availableSymbolNames.contains(label.symbolName)
+                ? label.symbolName
+                : CustomRoutineLabel.defaultSymbolName
+            return CustomRoutineLabel(id: label.id, title: title, symbolName: symbolName)
+        }
     }
 }
 

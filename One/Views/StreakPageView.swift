@@ -6,7 +6,8 @@ struct StreakPageView: View {
 
     @State private var mode: StreakPeriodMode = .week
     @State private var referenceDate = Calendar.current.startOfDay(for: .now)
-    @State private var routineLabelTargetMinutes: [RoutineLabel: Int] = [:]
+
+    @AppStorage(AppSettingsKey.customRoutineLabels) private var customRoutineLabelsRaw = CustomRoutineLabelStore.emptyStorage
 
     private var calendar: Calendar {
         var calendar = Calendar.current
@@ -22,7 +23,7 @@ struct StreakPageView: View {
         StreakStats(
             items: items,
             routineStates: routineStates,
-            routineLabelTargetMinutes: routineLabelTargetMinutes,
+            routineLabelOptions: routineLabelOptions,
             period: period,
             now: .now,
             calendar: calendar
@@ -51,9 +52,6 @@ struct StreakPageView: View {
         }
         .background(TaskListPalette.background)
         .sensoryFeedback(.selection, trigger: mode)
-        .onAppear {
-            reloadRoutineLabelTargets()
-        }
     }
 
     private var modePicker: some View {
@@ -314,12 +312,12 @@ struct StreakPageView: View {
         }
     }
 
-    private func reloadRoutineLabelTargets() {
-        routineLabelTargetMinutes = Dictionary(
-            uniqueKeysWithValues: RoutineLabel.allCases.map {
-                ($0, RoutineLabelTargetStore.weeklyTargetMinutes(for: $0))
-            }
-        )
+    private var customRoutineLabels: [CustomRoutineLabel] {
+        CustomRoutineLabelStore.labels(from: customRoutineLabelsRaw)
+    }
+
+    private var routineLabelOptions: [RoutineLabelOption] {
+        RoutineLabelOption.options(customLabels: customRoutineLabels)
     }
 }
 
@@ -390,7 +388,7 @@ private struct StreakStats {
     init(
         items: [ScheduleItem],
         routineStates: [RoutineOccurrenceState],
-        routineLabelTargetMinutes: [RoutineLabel: Int],
+        routineLabelOptions: [RoutineLabelOption],
         period: StreakPeriod,
         now: Date,
         calendar: Calendar
@@ -407,6 +405,9 @@ private struct StreakStats {
         var allOccurrences: [StreakRoutineOccurrence] = []
         var dailySummaries: [StreakDaySummary] = []
         var weeklyLabelOccurrences: [StreakRoutineOccurrence] = []
+        let customRoutineLabels = routineLabelOptions
+            .filter(\.isCustom)
+            .map { CustomRoutineLabel(id: $0.rawValue, title: $0.title, symbolName: $0.symbolName) }
 
         for date in includedDates {
             let routines = routineItems
@@ -434,7 +435,7 @@ private struct StreakStats {
                     id: "\(routine.id.uuidString)-\(date.timeIntervalSince1970)",
                     routineID: routine.id,
                     title: routine.title,
-                    label: routine.routineLabel,
+                    label: RoutineLabelOption.option(for: routine.routineLabelRawValue, customLabels: customRoutineLabels),
                     date: date,
                     status: effectiveStatus,
                     failReason: state?.failReason,
@@ -472,7 +473,7 @@ private struct StreakStats {
                     id: "label-\(routine.id.uuidString)-\(date.timeIntervalSince1970)",
                     routineID: routine.id,
                     title: routine.title,
-                    label: routine.routineLabel,
+                    label: RoutineLabelOption.option(for: routine.routineLabelRawValue, customLabels: customRoutineLabels),
                     date: date,
                     status: effectiveStatus,
                     failReason: state?.failReason,
@@ -495,8 +496,8 @@ private struct StreakStats {
             }
             .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
         self.failReasonSummaries = Self.failReasonSummaries(from: allOccurrences)
-        self.weeklyRoutineLabelSummaries = RoutineLabel.allCases.map { label in
-            let labelOccurrences = weeklyLabelOccurrences.filter { $0.label == Optional(label) }
+        self.weeklyRoutineLabelSummaries = routineLabelOptions.map { label in
+            let labelOccurrences = weeklyLabelOccurrences.filter { $0.label?.rawValue == label.rawValue }
             let plannedMinutes = labelOccurrences.reduce(0) { $0 + $1.minutes }
             let completedMinutes = labelOccurrences
                 .filter { $0.status == .done }
@@ -510,7 +511,6 @@ private struct StreakStats {
                 plannedMinutes: plannedMinutes,
                 completedMinutes: completedMinutes,
                 failedMinutes: failedMinutes,
-                targetMinutes: routineLabelTargetMinutes[label] ?? 0,
                 periodStart: period.start,
                 periodEnd: period.end,
                 now: now,
@@ -580,10 +580,8 @@ private struct StreakStats {
 
     var weeklyRoutineLabelTotalText: String {
         let completedMinutes = weeklyRoutineLabelSummaries.reduce(0) { $0 + $1.completedMinutes }
-        let targetMinutes = weeklyRoutineLabelSummaries.reduce(0) { $0 + $1.targetMinutes }
         let plannedMinutes = weeklyRoutineLabelSummaries.reduce(0) { $0 + $1.plannedMinutes }
-        let denominator = targetMinutes > 0 ? targetMinutes : plannedMinutes
-        return "\(completedMinutes.readableDuration) / \(denominator.readableDuration)"
+        return "\(completedMinutes.readableDuration) / \(plannedMinutes.readableDuration)"
     }
 
     var failReasonTotalText: String {
@@ -677,7 +675,7 @@ private struct StreakRoutineOccurrence: Identifiable {
     let id: String
     let routineID: UUID
     let title: String
-    let label: RoutineLabel?
+    let label: RoutineLabelOption?
     let date: Date
     let status: StreakOccurrenceStatus
     let failReason: RoutineFailReason?
@@ -703,21 +701,18 @@ private struct RoutineFailReasonSummary: Identifiable {
 }
 
 private struct RoutineLabelTimeSummary: Identifiable {
-    let label: RoutineLabel
+    let label: RoutineLabelOption
     let plannedMinutes: Int
     let completedMinutes: Int
     let failedMinutes: Int
-    let targetMinutes: Int
-    let expectedMinutes: Int
 
     var id: String { label.rawValue }
 
     init(
-        label: RoutineLabel,
+        label: RoutineLabelOption,
         plannedMinutes: Int,
         completedMinutes: Int,
         failedMinutes: Int,
-        targetMinutes: Int,
         periodStart: Date,
         periodEnd: Date,
         now: Date,
@@ -727,15 +722,10 @@ private struct RoutineLabelTimeSummary: Identifiable {
         self.plannedMinutes = plannedMinutes
         self.completedMinutes = completedMinutes
         self.failedMinutes = failedMinutes
-        self.targetMinutes = targetMinutes
-
-        let elapsed = max(0, min(now.timeIntervalSince(periodStart), periodEnd.timeIntervalSince(periodStart)))
-        let duration = max(1, periodEnd.timeIntervalSince(periodStart))
-        self.expectedMinutes = Int((Double(targetMinutes) * elapsed / duration).rounded())
     }
 
     var denominatorMinutes: Int {
-        targetMinutes > 0 ? targetMinutes : plannedMinutes
+        plannedMinutes
     }
 
     var remainingMinutes: Int {
@@ -748,8 +738,7 @@ private struct RoutineLabelTimeSummary: Identifiable {
     }
 
     var detailText: String {
-        let targetText = targetMinutes > 0 ? "Target \(targetMinutes.readableDuration)" : "Plan \(plannedMinutes.readableDuration)"
-        return "\(targetText) · Left \(remainingMinutes.readableDuration)"
+        "Plan \(plannedMinutes.readableDuration) · Left \(remainingMinutes.readableDuration)"
     }
 
     var outcomeText: String {
@@ -757,35 +746,25 @@ private struct RoutineLabelTimeSummary: Identifiable {
     }
 
     var status: RoutineLabelControlStatus {
-        if targetMinutes == 0 {
-            return plannedMinutes > 0 ? .tracked : .idle
+        if plannedMinutes == 0 {
+            return .idle
         }
 
-        if completedMinutes >= targetMinutes {
+        if completedMinutes >= plannedMinutes {
             return .onTrack
         }
 
-        if plannedMinutes == 0 && completedMinutes == 0 {
-            return .neglected
-        }
-
-        if plannedMinutes > targetMinutes + max(60, targetMinutes / 4) {
-            return .overloaded
-        }
-
-        if completedMinutes + RoutineLabelTargetStore.targetStepMinutes < expectedMinutes || failedMinutes > completedMinutes {
+        if failedMinutes > 0 {
             return .behind
         }
 
-        return .onTrack
+        return .tracked
     }
 }
 
 private enum RoutineLabelControlStatus: Equatable {
     case onTrack
     case behind
-    case overloaded
-    case neglected
     case tracked
     case idle
 
@@ -793,8 +772,6 @@ private enum RoutineLabelControlStatus: Equatable {
         switch self {
         case .onTrack: "On Track"
         case .behind: "Behind"
-        case .overloaded: "Overloaded"
-        case .neglected: "Neglected"
         case .tracked: "Tracked"
         case .idle: "Idle"
         }
@@ -846,31 +823,33 @@ private struct StreakRoutineLabelTimeRow: View {
     let summary: RoutineLabelTimeSummary
 
     private var tint: Color {
-        switch summary.label {
-        case .study:
+        switch summary.label.rawValue {
+        case RoutineLabel.study.rawValue:
             MissionTheme.accent
-        case .coding:
+        case RoutineLabel.coding.rawValue:
             TaskListPalette.secondaryText
-        case .work:
+        case RoutineLabel.work.rawValue:
             TaskListPalette.primaryText
-        case .life:
+        case RoutineLabel.life.rawValue:
             TaskListPalette.primaryText
-        case .play:
+        case RoutineLabel.play.rawValue:
             TaskListPalette.tertiaryText
-        case .hobby:
+        case RoutineLabel.hobby.rawValue:
             MissionTheme.secondaryText
-        case .rest:
+        case RoutineLabel.rest.rawValue:
             TaskListPalette.secondaryText
-        case .sleep:
+        case RoutineLabel.sleep.rawValue:
             Color(uiColor: .systemTeal)
-        case .health:
+        case RoutineLabel.health.rawValue:
             MissionTheme.success
-        case .money:
+        case RoutineLabel.money.rawValue:
             Color(uiColor: .systemYellow)
-        case .admin:
+        case RoutineLabel.admin.rawValue:
             TaskListPalette.secondaryText
-        case .social:
+        case RoutineLabel.social.rawValue:
             Color(uiColor: .systemBlue)
+        default:
+            MissionTheme.accent
         }
     }
 
@@ -878,10 +857,8 @@ private struct StreakRoutineLabelTimeRow: View {
         switch summary.status {
         case .onTrack, .tracked:
             MissionTheme.success
-        case .behind, .neglected:
+        case .behind:
             MissionTheme.danger
-        case .overloaded:
-            Color(uiColor: .systemOrange)
         case .idle:
             TaskListPalette.tertiaryText
         }

@@ -38,7 +38,7 @@ struct EditorSection<Content: View>: View {
 }
 
 struct RoutineLabelBadge: View {
-    let label: RoutineLabel
+    let label: RoutineLabelOption
     var isSelected = false
     var fillsWidth = true
     var fixedWidth: CGFloat?
@@ -50,6 +50,64 @@ struct RoutineLabelBadge: View {
     var normalForeground: Color = MissionTheme.graphite
     var selectedBackground: Color = MissionTheme.selection
     var normalBackground: Color = MissionTheme.controlFill
+
+    init(
+        label: RoutineLabel,
+        isSelected: Bool = false,
+        fillsWidth: Bool = true,
+        fixedWidth: CGFloat? = nil,
+        font: Font = .subheadline.weight(.semibold),
+        iconSize: CGFloat = 14,
+        height: CGFloat = 40,
+        horizontalPadding: CGFloat = 12,
+        selectedForeground: Color = MissionTheme.selectedText,
+        normalForeground: Color = MissionTheme.graphite,
+        selectedBackground: Color = MissionTheme.selection,
+        normalBackground: Color = MissionTheme.controlFill
+    ) {
+        self.init(
+            label: label.option,
+            isSelected: isSelected,
+            fillsWidth: fillsWidth,
+            fixedWidth: fixedWidth,
+            font: font,
+            iconSize: iconSize,
+            height: height,
+            horizontalPadding: horizontalPadding,
+            selectedForeground: selectedForeground,
+            normalForeground: normalForeground,
+            selectedBackground: selectedBackground,
+            normalBackground: normalBackground
+        )
+    }
+
+    init(
+        label: RoutineLabelOption,
+        isSelected: Bool = false,
+        fillsWidth: Bool = true,
+        fixedWidth: CGFloat? = nil,
+        font: Font = .subheadline.weight(.semibold),
+        iconSize: CGFloat = 14,
+        height: CGFloat = 40,
+        horizontalPadding: CGFloat = 12,
+        selectedForeground: Color = MissionTheme.selectedText,
+        normalForeground: Color = MissionTheme.graphite,
+        selectedBackground: Color = MissionTheme.selection,
+        normalBackground: Color = MissionTheme.controlFill
+    ) {
+        self.label = label
+        self.isSelected = isSelected
+        self.fillsWidth = fillsWidth
+        self.fixedWidth = fixedWidth
+        self.font = font
+        self.iconSize = iconSize
+        self.height = height
+        self.horizontalPadding = horizontalPadding
+        self.selectedForeground = selectedForeground
+        self.normalForeground = normalForeground
+        self.selectedBackground = selectedBackground
+        self.normalBackground = normalBackground
+    }
 
     var body: some View {
         HStack(spacing: 7) {

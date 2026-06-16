@@ -30,7 +30,8 @@ final class ScheduleItem: Identifiable {
         repeatWeekdayMask: Int = RepeatWeekdayMask.everyDay,
         activeFrom: Date? = nil,
         activeUntil: Date? = nil,
-        routineLabel: RoutineLabel? = nil
+        routineLabel: RoutineLabel? = nil,
+        routineLabelRawValue: String? = nil
     ) {
         self.id = id
         self.kindRawValue = kind.rawValue
@@ -44,7 +45,7 @@ final class ScheduleItem: Identifiable {
         self.repeatWeekdayMask = repeatWeekdayMask
         self.activeFrom = activeFrom
         self.activeUntil = activeUntil
-        self.routineLabelRawValue = kind == .routine ? routineLabel?.rawValue : nil
+        self.routineLabelRawValue = kind == .routine ? (routineLabelRawValue ?? routineLabel?.rawValue) : nil
     }
 }
 
@@ -96,6 +97,93 @@ enum RoutineLabel: String, CaseIterable, Identifiable, Hashable {
         case .admin: "tray.full.fill"
         case .social: "person.2.fill"
         }
+    }
+}
+
+struct RoutineLabelOption: Identifiable, Hashable, Sendable {
+    let rawValue: String
+    let title: String
+    let symbolName: String
+    let isCustom: Bool
+
+    var id: String { rawValue }
+
+    static var builtIns: [RoutineLabelOption] {
+        RoutineLabel.allCases.map(\.option)
+    }
+
+    static func options(customLabels: [CustomRoutineLabel]) -> [RoutineLabelOption] {
+        let builtInRawValues = Set(RoutineLabel.allCases.map(\.rawValue))
+        var seenCustomIDs: Set<String> = []
+        let customOptions = customLabels.compactMap { label -> RoutineLabelOption? in
+            guard !builtInRawValues.contains(label.id), seenCustomIDs.insert(label.id).inserted else {
+                return nil
+            }
+
+            return label.option
+        }
+
+        return builtIns + customOptions
+    }
+
+    static func option(for rawValue: String?, customLabels: [CustomRoutineLabel]) -> RoutineLabelOption? {
+        guard let rawValue else {
+            return nil
+        }
+
+        if let builtInLabel = RoutineLabel(rawValue: rawValue) {
+            return builtInLabel.option
+        }
+
+        return customLabels.first { $0.id == rawValue }?.option ?? fallback(for: rawValue)
+    }
+
+    static func fallback(for rawValue: String) -> RoutineLabelOption {
+        RoutineLabelOption(
+            rawValue: rawValue,
+            title: "Custom",
+            symbolName: CustomRoutineLabel.defaultSymbolName,
+            isCustom: true
+        )
+    }
+}
+
+extension RoutineLabel {
+    var option: RoutineLabelOption {
+        RoutineLabelOption(
+            rawValue: rawValue,
+            title: title,
+            symbolName: symbolName,
+            isCustom: false
+        )
+    }
+}
+
+struct CustomRoutineLabel: Codable, Identifiable, Hashable, Sendable {
+    static let defaultSymbolName = "tag.fill"
+
+    var id: String
+    var title: String
+    var symbolName: String
+
+    init(
+        id: String = "custom.\(UUID().uuidString)",
+        title: String,
+        symbolName: String = Self.defaultSymbolName
+    ) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.id = id
+        self.title = trimmedTitle.isEmpty ? "Label" : trimmedTitle
+        self.symbolName = symbolName
+    }
+
+    var option: RoutineLabelOption {
+        RoutineLabelOption(
+            rawValue: id,
+            title: title,
+            symbolName: symbolName,
+            isCustom: true
+        )
     }
 }
 

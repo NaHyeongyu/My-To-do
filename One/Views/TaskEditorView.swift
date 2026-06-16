@@ -15,8 +15,10 @@ struct ScheduleItemEditorView: View {
     @State private var startTime: Date
     @State private var endTime: Date
     @State private var repeatWeekdayMask: Int
-    @State private var routineLabel: RoutineLabel?
+    @State private var routineLabelRawValue: String?
     @State private var showsDeleteConfirmation = false
+
+    @AppStorage(AppSettingsKey.customRoutineLabels) private var customRoutineLabelsRaw = CustomRoutineLabelStore.emptyStorage
 
     init(item: ScheduleItem? = nil, kind: ScheduleKind = .task, initialDate: Date? = nil) {
         let editorKind = item?.kind ?? kind
@@ -41,7 +43,7 @@ struct ScheduleItemEditorView: View {
         _startTime = State(initialValue: calendar.dateBySnappingToFiveMinute(item?.startTime ?? defaultStart))
         _endTime = State(initialValue: calendar.dateBySnappingToFiveMinute(item?.endTime ?? defaultEnd))
         _repeatWeekdayMask = State(initialValue: item?.repeatWeekdayMask ?? defaultRepeatWeekdayMask)
-        _routineLabel = State(initialValue: item?.routineLabel)
+        _routineLabelRawValue = State(initialValue: item?.routineLabelRawValue)
     }
 
     var body: some View {
@@ -136,16 +138,16 @@ struct ScheduleItemEditorView: View {
                 ],
                 spacing: 10
             ) {
-                ForEach(RoutineLabel.allCases) { label in
+                ForEach(routineLabelOptions) { label in
                     Button {
                         withAnimation(.snappy(duration: 0.18)) {
-                            routineLabel = routineLabel == label ? nil : label
+                            routineLabelRawValue = routineLabelRawValue == label.rawValue ? nil : label.rawValue
                         }
                     } label: {
-                        RoutineLabelBadge(label: label, isSelected: routineLabel == label)
+                        RoutineLabelBadge(label: label, isSelected: routineLabelRawValue == label.rawValue)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityAddTraits(routineLabel == label ? .isSelected : [])
+                    .accessibilityAddTraits(routineLabelRawValue == label.rawValue ? .isSelected : [])
                 }
             }
         }
@@ -234,6 +236,14 @@ struct ScheduleItemEditorView: View {
         item?.kind == .routine
     }
 
+    private var customRoutineLabels: [CustomRoutineLabel] {
+        CustomRoutineLabelStore.labels(from: customRoutineLabelsRaw)
+    }
+
+    private var routineLabelOptions: [RoutineLabelOption] {
+        RoutineLabelOption.options(customLabels: customRoutineLabels)
+    }
+
     private func save() {
         let calendar = Calendar.current
         let snappedStartTime = calendar.dateBySnappingToFiveMinute(startTime)
@@ -257,7 +267,7 @@ struct ScheduleItemEditorView: View {
                     endTime: snappedEndTime,
                     repeatWeekdayMask: routineRepeatWeekdayMask,
                     activeFrom: todayStart,
-                    routineLabel: routineLabel
+                    routineLabelRawValue: routineLabelRawValue
                 )
                 modelContext.insert(newItem)
                 moveCurrentRoutineStates(from: item.id, to: newItem.id, startingAt: todayStart)
@@ -275,7 +285,7 @@ struct ScheduleItemEditorView: View {
                     item.repeatWeekdayMask = routineRepeatWeekdayMask
                     item.activeFrom = routineDate == nil ? (item.activeFrom ?? todayStart) : nil
                     item.activeUntil = nil
-                    item.routineLabel = routineLabel
+                    item.routineLabelRawValue = routineLabelRawValue
                 case .task:
                     item.taskDate = taskDate
                     item.startTime = nil
@@ -296,7 +306,7 @@ struct ScheduleItemEditorView: View {
                 endTime: kind == .routine ? snappedEndTime : nil,
                 repeatWeekdayMask: kind == .routine ? routineRepeatWeekdayMask : 0,
                 activeFrom: kind == .routine && routineDate == nil ? todayStart : nil,
-                routineLabel: kind == .routine ? routineLabel : nil
+                routineLabelRawValue: kind == .routine ? routineLabelRawValue : nil
             )
             modelContext.insert(newItem)
         }
