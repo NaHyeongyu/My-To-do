@@ -11,11 +11,27 @@ struct TimetablePageView: View {
     @State private var selectedDate = Calendar.current.startOfDay(for: .now)
     @State private var viewMode: TimetableViewMode = TimetableViewMode.storedValue()
     @State private var calendarTurnDirection = 1
+    @State private var selectedLabelFilter: RoutineLabel?
 
     private let calendar = Calendar.current
 
     private var routines: [ScheduleItem] {
-        items.routines(on: selectedDate, calendar: calendar)
+        let scheduledRoutines = items.routines(on: selectedDate, calendar: calendar)
+        guard let selectedLabelFilter else {
+            return scheduledRoutines
+        }
+
+        return scheduledRoutines.filter { $0.routineLabel == selectedLabelFilter }
+    }
+
+    private var calendarItems: [ScheduleItem] {
+        guard let selectedLabelFilter else {
+            return items
+        }
+
+        return items.filter { item in
+            item.kind != .routine || item.routineLabel == selectedLabelFilter
+        }
     }
 
     private var initialTimelineHour: Int {
@@ -135,6 +151,7 @@ struct TimetablePageView: View {
             loadViewMode()
         }
         .sensoryFeedback(.selection, trigger: selectedDate)
+        .sensoryFeedback(.selection, trigger: selectedLabelFilter)
     }
 
     private var timetableContent: some View {
@@ -145,6 +162,11 @@ struct TimetablePageView: View {
                     viewMode: viewMode,
                     onSetViewMode: setViewMode
                 )
+
+                CalendarLabelFilterBar(selectedLabel: $selectedLabelFilter)
+                    .padding(.top, 8)
+                    .padding(.bottom, 6)
+                    .background(MissionTheme.panel)
 
                 switch viewMode {
                 case .day:
@@ -202,7 +224,7 @@ struct TimetablePageView: View {
                         CalendarMonthView(
                             selectedDate: selectedDate,
                             monthDays: monthGridDays,
-                            items: items,
+                            items: calendarItems,
                             onSelectDate: {
                                 setSelectedDate($0)
                                 setViewMode(.day)
@@ -394,5 +416,68 @@ struct TimetablePageView: View {
         let trailingBlanks = (7 - filledCount % 7) % 7
 
         return Array(repeating: nil, count: normalizedLeadingBlanks) + days + Array(repeating: nil, count: trailingBlanks)
+    }
+}
+
+private struct CalendarLabelFilterBar: View {
+    @Binding var selectedLabel: RoutineLabel?
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                allButton
+
+                ForEach(RoutineLabel.allCases) { label in
+                    Button {
+                        withAnimation(.snappy(duration: 0.18)) {
+                            selectedLabel = selectedLabel == label ? nil : label
+                        }
+                    } label: {
+                        RoutineLabelBadge(
+                            label: label,
+                            isSelected: selectedLabel == label,
+                            fillsWidth: false,
+                            fixedWidth: 106,
+                            font: .caption.weight(.semibold),
+                            iconSize: 12,
+                            height: 30,
+                            horizontalPadding: 9
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selectedLabel == label ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 2)
+        }
+    }
+
+    private var allButton: some View {
+        Button {
+            withAnimation(.snappy(duration: 0.18)) {
+                selectedLabel = nil
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "square.grid.2x2")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 20, height: 20)
+
+                Text("All")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 9)
+            .frame(width: 78, alignment: .leading)
+            .frame(minHeight: 30, alignment: .leading)
+            .foregroundStyle(selectedLabel == nil ? MissionTheme.selectedText : MissionTheme.graphite)
+            .background(
+                selectedLabel == nil ? MissionTheme.selection : MissionTheme.controlFill,
+                in: Capsule(style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selectedLabel == nil ? .isSelected : [])
     }
 }

@@ -36,6 +36,18 @@ struct WidgetRoutineItem: Codable, Hashable, Identifiable {
         WidgetRoutineOutcome(rawValue: outcomeRawValue ?? "") ?? .pending
     }
 
+    func withOutcome(_ outcome: WidgetRoutineOutcome) -> WidgetRoutineItem {
+        WidgetRoutineItem(
+            id: id,
+            title: title,
+            startTimeText: startTimeText,
+            endTimeText: endTimeText,
+            startDate: startDate,
+            endDate: endDate,
+            outcome: outcome
+        )
+    }
+
     func isOutcomeAvailable(at date: Date) -> Bool {
         guard !outcome.isResolved else {
             return false
@@ -47,6 +59,13 @@ struct WidgetRoutineItem: Codable, Hashable, Identifiable {
 
         return date >= startDate
     }
+}
+
+struct WidgetRoutineOutcomeCommand: Codable, Hashable, Identifiable {
+    let id: UUID
+    let routineID: UUID
+    let outcome: WidgetRoutineOutcome
+    let occurredAt: Date
 }
 
 struct WidgetSnapshot: Codable, Hashable {
@@ -93,6 +112,7 @@ enum WidgetSnapshotStore {
     static let appGroupIdentifier = "group.com.onemytodo.app"
 
     private static let snapshotKey = "todayWidgetSnapshot"
+    private static let pendingRoutineOutcomeKey = "pendingRoutineOutcomeCommands"
 
     static func load() -> WidgetSnapshot {
         guard
@@ -111,7 +131,76 @@ enum WidgetSnapshotStore {
         defaults.synchronize()
     }
 
+    static func updateRoutineOutcome(
+        routineID: UUID,
+        outcome: WidgetRoutineOutcome,
+        at date: Date = .now,
+        calendar: Calendar = .current
+    ) {
+        var snapshot = load()
+        let commandDate: Date
+
+        if let index = snapshot.routines.firstIndex(where: { $0.id == routineID }) {
+            let routine = snapshot.routines[index]
+            var routines = snapshot.routines
+            commandDate = routine.startDate ?? date
+            routines[index] = routine.withOutcome(outcome)
+            snapshot = WidgetSnapshot(
+                generatedAt: date,
+                routines: routines,
+                tasks: snapshot.tasks
+            )
+            save(snapshot)
+        } else {
+            commandDate = date
+        }
+
+        enqueuePendingRoutineOutcome(
+            WidgetRoutineOutcomeCommand(
+                id: UUID(),
+                routineID: routineID,
+                outcome: outcome,
+                occurredAt: commandDate
+            ),
+            calendar: calendar
+        )
+    }
+
+    static func consumePendingRoutineOutcomes() -> [WidgetRoutineOutcomeCommand] {
+        let commands = pendingRoutineOutcomes()
+        defaults.removeObject(forKey: pendingRoutineOutcomeKey)
+        defaults.synchronize()
+        return commands
+    }
+
     private static var defaults: UserDefaults {
         UserDefaults(suiteName: appGroupIdentifier) ?? .standard
+    }
+
+    private static func pendingRoutineOutcomes() -> [WidgetRoutineOutcomeCommand] {
+        guard
+            let data = defaults.data(forKey: pendingRoutineOutcomeKey),
+            let commands = try? JSONDecoder().decode([WidgetRoutineOutcomeCommand].self, from: data)
+        else {
+            return []
+        }
+
+        return commands
+    }
+
+    private static func enqueuePendingRoutineOutcome(
+        _ command: WidgetRoutineOutcomeCommand,
+        calendar: Calendar
+    ) {
+        var commands = pendingRoutineOutcomes()
+        commands.removeAll {
+            $0.routineID == command.routineID
+                && calendar.isDate($0.occurredAt, inSameDayAs: command.occurredAt)
+        }
+        commands.append(command)
+
+        guard let data = try? JSONEncoder().encode(Array(commands.suffix(20))) else { return }
+        defaults.set(data, forKey: pendingRoutineOutcomeKey)
+        defaults.synchronize()
     }
 }

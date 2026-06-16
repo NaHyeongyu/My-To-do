@@ -12,6 +12,7 @@ struct RootView: View {
 
     @State private var selectedPage: AppPage = .timetable
     @State private var editorMode: EditorMode?
+    @State private var pendingFailRequest: RoutineFailRequest?
 
     var body: some View {
         TabView(selection: $selectedPage) {
@@ -39,7 +40,7 @@ struct RootView: View {
         .sheet(
             item: $editorMode,
             onDismiss: {
-                saveAndUpdateWidgetSnapshot(deferred: true)
+                saveAndUpdateWidgetSnapshot()
             }
         ) { mode in
             switch mode {
@@ -49,8 +50,30 @@ struct RootView: View {
                 ScheduleItemEditorView(item: item)
             }
         }
+        .confirmationDialog(
+            "Why did this fail?",
+            isPresented: failReasonDialogBinding,
+            titleVisibility: .visible
+        ) {
+            ForEach(RoutineFailReason.allCases) { reason in
+                Button(reason.title) {
+                    resolvePendingFail(with: reason)
+                }
+            }
+
+            Button("Fail without reason", role: .destructive) {
+                resolvePendingFail(with: nil)
+            }
+
+            Button("Cancel", role: .cancel) {
+                pendingFailRequest = nil
+            }
+        } message: {
+            Text(pendingFailRequest?.routine.title ?? "Select a reason.")
+        }
         .onAppear {
             checkNotificationPermissionOnLaunch()
+            applyPendingWidgetRoutineOutcomes()
             saveAndUpdateWidgetSnapshot()
             syncRoutineNotifications()
         }
@@ -64,8 +87,12 @@ struct RootView: View {
             syncRoutineNotifications()
         }
         .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                applyPendingWidgetRoutineOutcomes()
+            }
+
             if phase == .active || phase == .background {
-                saveAndUpdateWidgetSnapshot(deferred: phase == .active)
+                saveAndUpdateWidgetSnapshot(deferred: false)
             }
             if phase == .active {
                 syncRoutineNotifications()
@@ -101,6 +128,7 @@ struct RootView: View {
                     state.routineID.uuidString,
                     state.dayStart.timeIntervalSince1970.description,
                     state.statusRawValue,
+                    state.failReasonRawValue ?? "",
                     state.delayMinutes.description
                 ].joined(separator: "|")
             }
@@ -181,7 +209,7 @@ struct RootView: View {
     ) {
         let writeSnapshot = {
             let states = routineStatesForWidget(replacing: updatedState)
-            WidgetSnapshotWriter.save(items: items, routineStates: states)
+            WidgetSnapshotWriter.save(items: itemsForWidgetSnapshot(), routineStates: states)
         }
 
         if deferred {
@@ -197,30 +225,107 @@ struct RootView: View {
     private func upsertRoutineState(
         for routine: ScheduleItem,
         on date: Date,
-        status: RoutineOccurrenceStatus
+        status: RoutineOccurrenceStatus,
+        failReason: RoutineFailReason? = nil,
+        updatesWidget: Bool = true
     ) -> RoutineOccurrenceState {
         let dayStart = Calendar.current.startOfDay(for: date)
-        let state = routineStates.state(for: routine, on: dayStart) ?? {
+        let existingStates = fetchedRoutineStates()
+        let state = existingStates.state(for: routine, on: dayStart) ?? {
             let newState = RoutineOccurrenceState(routineID: routine.id, dayStart: dayStart)
             modelContext.insert(newState)
             return newState
         }()
 
         state.status = status
+        state.failReason = status == .skipped ? failReason : nil
         try? modelContext.save()
-        updateWidgetSnapshot(replacing: state)
+        if updatesWidget {
+            updateWidgetSnapshot(replacing: state)
+        }
         return state
     }
 
-    private func routineStatesForWidget(replacing updatedState: RoutineOccurrenceState?) -> [RoutineOccurrenceState] {
-        guard let updatedState else {
-            return routineStates
+    private var failReasonDialogBinding: Binding<Bool> {
+        Binding {
+            pendingFailRequest != nil
+        } set: { isPresented in
+            if !isPresented {
+                pendingFailRequest = nil
+            }
+        }
+    }
+
+    private func resolvePendingFail(with reason: RoutineFailReason?) {
+        guard let request = pendingFailRequest else {
+            return
         }
 
-        return routineStates.filter { state in
+        pendingFailRequest = nil
+        upsertRoutineState(
+            for: request.routine,
+            on: request.date,
+            status: .skipped,
+            failReason: reason
+        )
+    }
+
+    private func routineStatesForWidget(replacing updatedState: RoutineOccurrenceState?) -> [RoutineOccurrenceState] {
+        let states = fetchedRoutineStates()
+
+        guard let updatedState else {
+            return states
+        }
+
+        return states.filter { state in
             state.routineID != updatedState.routineID
                 || !Calendar.current.isDate(state.dayStart, inSameDayAs: updatedState.dayStart)
         } + [updatedState]
+    }
+
+    private func itemsForWidgetSnapshot() -> [ScheduleItem] {
+        let descriptor = FetchDescriptor<ScheduleItem>()
+        return (try? modelContext.fetch(descriptor)) ?? items
+    }
+
+    private func fetchedRoutineStates() -> [RoutineOccurrenceState] {
+        let descriptor = FetchDescriptor<RoutineOccurrenceState>()
+        return (try? modelContext.fetch(descriptor)) ?? routineStates
+    }
+
+    private func applyPendingWidgetRoutineOutcomes() {
+        let commands = WidgetSnapshotStore.consumePendingRoutineOutcomes()
+        guard !commands.isEmpty else {
+            return
+        }
+
+        let routines = itemsForWidgetSnapshot().filter { $0.kind == .routine }
+
+        for command in commands {
+            guard let routine = routines.first(where: { $0.id == command.routineID }) else {
+                continue
+            }
+
+            let status: RoutineOccurrenceStatus
+            switch command.outcome {
+            case .success:
+                status = .done
+            case .fail:
+                status = .skipped
+            case .pending:
+                continue
+            }
+
+            upsertRoutineState(
+                for: routine,
+                on: command.occurredAt,
+                status: status,
+                updatesWidget: false
+            )
+        }
+
+        try? modelContext.save()
+        updateWidgetSnapshot()
     }
 
     private func handleDeepLink(_ url: URL) {
@@ -338,14 +443,14 @@ struct RootView: View {
                     upsertRoutineState(for: routine, on: date, status: .done)
                 },
                 onSkipRoutine: { routine, date in
-                    upsertRoutineState(for: routine, on: date, status: .skipped)
+                    pendingFailRequest = RoutineFailRequest(routine: routine, date: date)
                 }
             )
         case .tasks:
             TasksPageView(
                 items: items,
                 onItemsChanged: {
-                    saveAndUpdateWidgetSnapshot(deferred: true)
+                    saveAndUpdateWidgetSnapshot()
                 }
             )
         case .routines:
@@ -376,6 +481,12 @@ private enum EditorMode: Identifiable {
             "edit-\(item.id.uuidString)"
         }
     }
+}
+
+private struct RoutineFailRequest: Identifiable {
+    let id = UUID()
+    let routine: ScheduleItem
+    let date: Date
 }
 
 #Preview {

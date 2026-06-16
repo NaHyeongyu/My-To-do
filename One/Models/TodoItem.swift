@@ -3,16 +3,16 @@ import SwiftData
 
 @Model
 final class ScheduleItem: Identifiable {
-    var id: UUID
-    var kindRawValue: String
-    var title: String
-    var notes: String
-    var createdAt: Date
+    var id: UUID = UUID()
+    var kindRawValue: String = ScheduleKind.task.rawValue
+    var title: String = ""
+    var notes: String = ""
+    var createdAt: Date = Date()
     var taskDate: Date?
     var completedAt: Date?
     var startTime: Date?
     var endTime: Date?
-    var repeatWeekdayMask: Int
+    var repeatWeekdayMask: Int = RepeatWeekdayMask.everyDay
     var activeFrom: Date?
     var activeUntil: Date?
     var routineLabelRawValue: String?
@@ -48,12 +48,17 @@ final class ScheduleItem: Identifiable {
     }
 }
 
-enum RoutineLabel: String, CaseIterable, Identifiable {
+enum RoutineLabel: String, CaseIterable, Identifiable, Hashable {
     case study
     case coding
     case life
     case play
     case hobby
+    case sleep
+    case health
+    case money
+    case admin
+    case social
 
     var id: String { rawValue }
 
@@ -64,6 +69,11 @@ enum RoutineLabel: String, CaseIterable, Identifiable {
         case .life: "Life"
         case .play: "Play"
         case .hobby: "Hobby"
+        case .sleep: "Sleep"
+        case .health: "Health"
+        case .money: "Money"
+        case .admin: "Admin"
+        case .social: "Social"
         }
     }
 
@@ -74,6 +84,11 @@ enum RoutineLabel: String, CaseIterable, Identifiable {
         case .life: "heart.fill"
         case .play: "gamecontroller.fill"
         case .hobby: "paintpalette.fill"
+        case .sleep: "bed.double.fill"
+        case .health: "figure.run"
+        case .money: "banknote.fill"
+        case .admin: "tray.full.fill"
+        case .social: "person.2.fill"
         }
     }
 }

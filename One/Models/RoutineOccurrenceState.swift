@@ -24,21 +24,53 @@ enum RoutineOccurrenceStatus: String, CaseIterable {
     }
 }
 
+enum RoutineFailReason: String, CaseIterable, Identifiable, Hashable {
+    case noTime
+    case lowEnergy
+    case distracted
+    case rescheduled
+    case notImportant
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .noTime: "No time"
+        case .lowEnergy: "Low energy"
+        case .distracted: "Distracted"
+        case .rescheduled: "Rescheduled"
+        case .notImportant: "Not important"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .noTime: "clock"
+        case .lowEnergy: "battery.25"
+        case .distracted: "eye.slash"
+        case .rescheduled: "arrow.clockwise"
+        case .notImportant: "minus.circle"
+        }
+    }
+}
+
 @Model
 final class RoutineOccurrenceState: Identifiable {
-    var id: UUID
-    var routineID: UUID
-    var dayStart: Date
-    var statusRawValue: String
-    var delayMinutes: Int
-    var createdAt: Date
-    var updatedAt: Date
+    var id: UUID = UUID()
+    var routineID: UUID = UUID()
+    var dayStart: Date = Date()
+    var statusRawValue: String = RoutineOccurrenceStatus.pending.rawValue
+    var failReasonRawValue: String?
+    var delayMinutes: Int = 0
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
 
     init(
         id: UUID = UUID(),
         routineID: UUID,
         dayStart: Date,
         status: RoutineOccurrenceStatus = .pending,
+        failReason: RoutineFailReason? = nil,
         delayMinutes: Int = 0,
         createdAt: Date = .now,
         updatedAt: Date = .now
@@ -47,6 +79,7 @@ final class RoutineOccurrenceState: Identifiable {
         self.routineID = routineID
         self.dayStart = dayStart
         self.statusRawValue = status.rawValue
+        self.failReasonRawValue = status == .skipped ? failReason?.rawValue : nil
         self.delayMinutes = delayMinutes
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -58,6 +91,23 @@ extension RoutineOccurrenceState {
         get { RoutineOccurrenceStatus(rawValue: statusRawValue) ?? .pending }
         set {
             statusRawValue = newValue.rawValue
+            if newValue != .skipped {
+                failReasonRawValue = nil
+            }
+            updatedAt = .now
+        }
+    }
+
+    var failReason: RoutineFailReason? {
+        get {
+            guard let failReasonRawValue else {
+                return nil
+            }
+
+            return RoutineFailReason(rawValue: failReasonRawValue)
+        }
+        set {
+            failReasonRawValue = newValue?.rawValue
             updatedAt = .now
         }
     }
