@@ -3,12 +3,14 @@ import SwiftUI
 
 struct TodayTaskRowView: View {
     @Bindable var item: ScheduleItem
+    let onItemsChanged: () -> Void
 
     var body: some View {
         Button {
             withAnimation(.snappy(duration: 0.18)) {
                 item.toggleCompleted()
             }
+            onItemsChanged()
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "circle")
@@ -23,7 +25,14 @@ struct TodayTaskRowView: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(.vertical, 10)
+            .padding(.vertical, 11)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(TaskListPalette.glassStroke, lineWidth: 0.5)
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

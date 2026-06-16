@@ -1,9 +1,53 @@
+import AppIntents
 import SwiftUI
 import WidgetKit
 
 struct TodayOverviewEntry: TimelineEntry {
     let date: Date
     let snapshot: WidgetSnapshot
+}
+
+private enum OneWidgetLayout {
+    static let contentPadding: CGFloat = 14
+    static let compactSpacing: CGFloat = 8
+    static let sectionSpacing: CGFloat = 12
+    static let actionButtonHeight: CGFloat = 34
+}
+
+private struct MarkRoutineOutcomeIntent: AppIntent {
+    static let title: LocalizedStringResource = "Mark Routine Outcome"
+    static let openAppWhenRun = false
+
+    @Parameter(title: "Routine ID")
+    var routineID: String
+
+    @Parameter(title: "Outcome")
+    var outcome: String
+
+    init() {
+        routineID = ""
+        outcome = WidgetRoutineOutcome.pending.rawValue
+    }
+
+    init(routineID: UUID, outcome: WidgetRoutineOutcome) {
+        self.routineID = routineID.uuidString
+        self.outcome = outcome.rawValue
+    }
+
+    func perform() async throws -> some IntentResult {
+        guard
+            let routineID = UUID(uuidString: routineID),
+            let outcome = WidgetRoutineOutcome(rawValue: outcome),
+            outcome.isResolved
+        else {
+            return .result()
+        }
+
+        WidgetSnapshotStore.updateRoutineOutcome(routineID: routineID, outcome: outcome)
+        WidgetCenter.shared.reloadTimelines(ofKind: "RoutineCheckInWidget")
+        WidgetCenter.shared.reloadTimelines(ofKind: "TodayOverviewWidget")
+        return .result()
+    }
 }
 
 struct TodayOverviewProvider: TimelineProvider {
@@ -27,9 +71,29 @@ struct TodayOverviewProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodayOverviewEntry>) -> Void) {
-        let entry = TodayOverviewEntry(date: .now, snapshot: WidgetSnapshotStore.load())
-        let nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now.addingTimeInterval(900)
+        let now = Date()
+        let snapshot = WidgetSnapshotStore.load()
+        let entry = TodayOverviewEntry(date: now, snapshot: snapshot)
+        let fallbackRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: now) ?? now.addingTimeInterval(900)
+        let nextRoutineUnlock = snapshot.routines
+            .filter { !$0.outcome.isResolved }
+            .compactMap(\.startDate)
+            .filter { $0 > now }
+            .min()
+        let nextRefresh = [nextRoutineUnlock, fallbackRefresh].compactMap(\.self).min() ?? fallbackRefresh
         completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func oneWidgetContentPadding(for family: WidgetFamily) -> some View {
+        switch family {
+        case .systemSmall, .systemMedium:
+            padding(OneWidgetLayout.contentPadding)
+        default:
+            self
+        }
     }
 }
 
@@ -67,7 +131,7 @@ struct TodayOverviewWidgetView: View {
     }
 
     private var smallHomeView: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OneWidgetLayout.compactSpacing) {
             Text("Today")
                 .font(.headline)
                 .foregroundStyle(.primary)
@@ -98,15 +162,20 @@ struct TodayOverviewWidgetView: View {
                 countPill("\(tasks.count)", "checkmark.circle")
             }
         }
+        .oneWidgetContentPadding(for: family)
         .containerBackground(.fill.tertiary, for: .widget)
     }
 
     private var mediumHomeView: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: OneWidgetLayout.sectionSpacing) {
             widgetSection(title: "Calendar", systemImage: "calendar", rows: routineRows)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             Divider()
+                .padding(.vertical, 2)
             widgetSection(title: "Tasks", systemImage: "checkmark.circle", rows: taskRows)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .oneWidgetContentPadding(for: family)
         .containerBackground(.fill.tertiary, for: .widget)
     }
 
@@ -200,6 +269,7 @@ struct TodayOverviewWidget: Widget {
             .accessoryCircular,
             .accessoryRectangular
         ])
+        .contentMarginsDisabled()
     }
 }
 
@@ -240,11 +310,12 @@ struct RoutineCheckInWidgetView: View {
 
             actionLinks
         }
+        .oneWidgetContentPadding(for: family)
         .containerBackground(.fill.tertiary, for: .widget)
     }
 
     private var mediumView: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: OneWidgetLayout.sectionSpacing) {
             VStack(alignment: .leading, spacing: 10) {
                 header
 
@@ -262,6 +333,7 @@ struct RoutineCheckInWidgetView: View {
             }
             .frame(width: 126)
         }
+        .oneWidgetContentPadding(for: family)
         .containerBackground(.fill.tertiary, for: .widget)
     }
 
@@ -308,10 +380,15 @@ struct RoutineCheckInWidgetView: View {
                     .lineLimit(1)
 
                 if routine.outcome.isResolved {
-                    Label(routine.outcome.title, systemImage: routine.outcome.symbolName)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(routine.outcome == .success ? .green : .red)
-                        .labelStyle(.titleAndIcon)
+                    ViewThatFits(in: .horizontal) {
+                        Label(routine.outcome.title, systemImage: routine.outcome.symbolName)
+                            .labelStyle(.titleAndIcon)
+
+                        Image(systemName: routine.outcome.symbolName)
+                    }
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(routine.outcome == .success ? .green : .red)
+                    .lineLimit(1)
                 }
             }
         }
@@ -329,31 +406,47 @@ struct RoutineCheckInWidgetView: View {
         }
     }
 
+    @ViewBuilder
     private var actionLinks: some View {
+        let isAvailable = routine?.isOutcomeAvailable(at: entry.date) == true
+
         HStack(spacing: 8) {
-            Link(destination: OneWidgetDeepLink.fail) {
-                Label("Fail", systemImage: "xmark")
-                    .font(.caption.weight(.bold))
-                    .frame(maxWidth: .infinity)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .padding(.vertical, 8)
-                    .foregroundStyle(.white)
-                    .background(.red, in: Capsule())
+            if isAvailable, let routine {
+                Button(intent: MarkRoutineOutcomeIntent(routineID: routine.id, outcome: .fail)) {
+                    actionIcon("xmark", color: .red)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Fail")
+            } else {
+                actionIcon("xmark", color: .red, isLocked: true)
+                    .accessibilityLabel("Fail locked until routine start")
             }
 
-            Link(destination: OneWidgetDeepLink.success) {
-                Label("Success", systemImage: "checkmark")
-                    .font(.caption.weight(.bold))
-                    .frame(maxWidth: .infinity)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .padding(.vertical, 8)
-                    .foregroundStyle(.white)
-                    .background(.green, in: Capsule())
+            if isAvailable, let routine {
+                Button(intent: MarkRoutineOutcomeIntent(routineID: routine.id, outcome: .success)) {
+                    actionIcon("checkmark", color: .green)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Success")
+            } else {
+                actionIcon("checkmark", color: .green, isLocked: true)
+                    .accessibilityLabel("Success locked until routine start")
             }
         }
-        .labelStyle(.titleAndIcon)
+    }
+
+    private func actionIcon(_ systemName: String, color: Color, isLocked: Bool = false) -> some View {
+        Image(systemName: systemName)
+            .font(.caption.weight(.bold))
+            .frame(maxWidth: .infinity)
+            .frame(height: OneWidgetLayout.actionButtonHeight)
+            .foregroundStyle(.white)
+            .background(color.opacity(isLocked ? 0.32 : 1), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(color.opacity(isLocked ? 0.4 : 0), lineWidth: 1)
+            }
+            .opacity(isLocked ? 0.62 : 1)
     }
 }
 
@@ -371,6 +464,7 @@ struct RoutineCheckInWidget: Widget {
             .systemMedium,
             .accessoryRectangular
         ])
+        .contentMarginsDisabled()
     }
 }
 

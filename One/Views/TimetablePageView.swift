@@ -18,6 +18,10 @@ struct TimetablePageView: View {
         items.routines(on: selectedDate, calendar: calendar)
     }
 
+    private var calendarItems: [ScheduleItem] {
+        items
+    }
+
     private var initialTimelineHour: Int {
         let currentHour = calendar.component(.hour, from: .now)
         let firstRoutineHour = routines
@@ -121,6 +125,7 @@ struct TimetablePageView: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.title2.weight(.semibold))
+                        .foregroundStyle(MissionTheme.floatingButtonSymbol)
                         .frame(width: 54, height: 54)
                 }
                 .missionLiquidButton(.prominent)
@@ -201,7 +206,7 @@ struct TimetablePageView: View {
                         CalendarMonthView(
                             selectedDate: selectedDate,
                             monthDays: monthGridDays,
-                            items: items,
+                            items: calendarItems,
                             onSelectDate: {
                                 setSelectedDate($0)
                                 setViewMode(.day)

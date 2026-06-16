@@ -180,7 +180,8 @@ struct RoutineNowCandidate: Identifiable {
     }
 
     var timeText: String {
-        "\(formattedTime(for: startMinute)) - \(formattedTime(for: endMinute))"
+        let suffix = endMinute >= ScheduleItem.minutesPerDay ? " +1d" : ""
+        return "\(formattedTime(for: startMinute)) - \(formattedTime(for: endMinute))\(suffix)"
     }
 
     var delayText: String? {
@@ -272,7 +273,7 @@ struct CalendarNowModeCard: View {
                             .foregroundStyle(MissionTheme.secondaryText)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(MissionTheme.separator.opacity(0.44), in: Capsule(style: .continuous))
+                            .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
                     }
                 }
 
@@ -295,33 +296,44 @@ struct CalendarNowModeCard: View {
 
     @ViewBuilder
     private func actionRow(_ candidate: RoutineNowCandidate) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                onSkip(candidate.item)
-            } label: {
-                Label("Fail", systemImage: "xmark")
-                    .frame(maxWidth: .infinity)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-            }
-            .missionLiquidButton(.prominent)
-            .tint(MissionTheme.danger)
-            .accessibilityLabel("Mark routine as fail")
+        if candidate.phase == .next {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.fill")
+                    .font(.caption.weight(.semibold))
 
-            Button {
-                onDone(candidate.item)
-            } label: {
-                Label("Success", systemImage: "checkmark")
-                    .frame(maxWidth: .infinity)
+                Text("Available at start")
+                    .font(.caption.weight(.semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
             }
-            .missionLiquidButton(.prominent)
-            .tint(MissionTheme.success)
-            .accessibilityLabel("Mark routine as success")
+            .foregroundStyle(MissionTheme.secondaryText)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
+            .accessibilityLabel("Routine actions available at start time")
+        } else {
+            HStack(spacing: 8) {
+                RoutineOutcomeButton(
+                    title: "Fail",
+                    systemImage: "xmark",
+                    tint: MissionTheme.danger
+                ) {
+                    onSkip(candidate.item)
+                }
+                .accessibilityLabel("Mark routine as fail")
+
+                RoutineOutcomeButton(
+                    title: "Success",
+                    systemImage: "checkmark",
+                    tint: MissionTheme.success
+                ) {
+                    onDone(candidate.item)
+                }
+                .accessibilityLabel("Mark routine as success")
+            }
+            .font(.caption.weight(.semibold))
+            .buttonBorderShape(.capsule)
         }
-        .font(.caption.weight(.semibold))
-        .buttonBorderShape(.capsule)
     }
 
     private var emptyContent: some View {
@@ -351,6 +363,31 @@ struct CalendarNowModeCard: View {
     }
 }
 
+private struct RoutineOutcomeButton: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ViewThatFits(in: .horizontal) {
+                Label(title, systemImage: systemImage)
+                    .labelStyle(.titleAndIcon)
+                    .lineLimit(1)
+
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.bold))
+            }
+            .minimumScaleFactor(0.76)
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
+        }
+        .missionLiquidButton(.prominent)
+        .tint(tint)
+    }
+}
+
 private struct MissionMetricPill: View {
     let title: String
     let value: String
@@ -372,6 +409,6 @@ private struct MissionMetricPill: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .frame(maxWidth: .infinity)
-        .background(MissionTheme.separator.opacity(0.12), in: Capsule(style: .continuous))
+        .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
     }
 }

@@ -33,10 +33,10 @@ struct RoutinePlannerPageView: View {
                 .padding(.bottom, 82)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(uiColor: .systemBackground))
+            .background(MissionTheme.panel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color(uiColor: .systemBackground))
+        .background(MissionTheme.panel)
         .sensoryFeedback(.selection, trigger: selectedWeekday)
     }
 }
@@ -55,7 +55,7 @@ private struct RoutineWeekdaySelector: View {
                 } label: {
                     Text(weekday.shortTitle)
                         .font(.caption.weight(weekday == selectedWeekday ? .semibold : .regular))
-                        .foregroundStyle(weekday == selectedWeekday ? MissionTheme.accent : Color.secondary)
+                        .foregroundStyle(weekday == selectedWeekday ? MissionTheme.graphite : MissionTheme.secondaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.82)
                         .frame(maxWidth: .infinity)
@@ -63,7 +63,7 @@ private struct RoutineWeekdaySelector: View {
                         .background {
                             if weekday == selectedWeekday {
                                 Capsule()
-                                    .fill(MissionTheme.accent.opacity(0.12))
+                                    .fill(MissionTheme.controlFill)
                             }
                         }
                 }
@@ -75,9 +75,9 @@ private struct RoutineWeekdaySelector: View {
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .padding(.bottom, 8)
-        .background(Color(uiColor: .systemBackground))
+        .background(MissionTheme.panel)
         .overlay(alignment: .bottom) {
-            TimelineDivider(color: Color(uiColor: .separator), opacity: 0.42)
+            TimelineDivider(color: MissionTheme.separator, opacity: 0.42)
         }
     }
 }
@@ -99,7 +99,7 @@ private struct RoutineDayTimeline: View {
             }
         }
         .frame(height: TimelineLayout.contentHeight(startHour: startHour, endHour: endHour))
-        .background(Color(uiColor: .systemBackground))
+        .background(MissionTheme.panel)
     }
 
     @ViewBuilder
@@ -108,68 +108,109 @@ private struct RoutineDayTimeline: View {
             startHour: startHour,
             endHour: endHour,
             width: width,
-            labelColor: Color(uiColor: .tertiaryLabel),
-            separatorColor: Color(uiColor: .separator),
-            separatorOpacity: 0.32
+            labelColor: MissionTheme.secondaryText,
+            separatorColor: MissionTheme.separator,
+            separatorOpacity: 0.34
         )
     }
 
     @ViewBuilder
     private func eventBlocks(width: CGFloat) -> some View {
-        ForEach(routines) { routine in
+        ForEach(eventLayouts(width: width)) { layout in
             RoutineDayEventBlock(
                 weekday: weekday,
-                item: routine
+                item: layout.item,
+                isCompact: layout.isCompact
             ) {
-                onEdit(routine)
+                onEdit(layout.item)
             }
             .frame(
-                width: max(TimelineLayout.eventMinWidth, width - TimelineLayout.timeColumnWidth - 14),
-                height: TimelineLayout.eventHeight(for: routine, calendar: calendar)
+                width: layout.width,
+                height: layout.height
             )
             .offset(
-                x: TimelineLayout.timeColumnWidth + 12,
-                y: TimelineLayout.topContentInset
-                    + TimelineLayout.eventTop(for: routine, startHour: startHour, calendar: calendar)
+                x: layout.x,
+                y: layout.top
             )
         }
+    }
+
+    private func eventLayouts(width: CGFloat) -> [TimelineEventLayout] {
+        TimelineLayout.eventLayouts(
+            for: routines,
+            in: width,
+            startHour: startHour,
+            calendar: calendar
+        )
     }
 }
 
 private struct RoutineDayEventBlock: View {
     let weekday: RepeatWeekday
     let item: ScheduleItem
+    let isCompact: Bool
     let onEdit: () -> Void
 
-    private var startText: String {
-        (item.startTime ?? .now).formatted(.dateTime.hour().minute())
-    }
-
-    private var endText: String {
-        (item.endTime ?? .now).formatted(.dateTime.hour().minute())
+    private var timeRangeText: String {
+        item.timeRangeText()
     }
 
     var body: some View {
         Button(action: onEdit) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(MissionTheme.accent)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.76)
-
-                Text("\(startText) - \(endText)")
-                    .font(.caption2.weight(.medium).monospacedDigit())
-                    .foregroundStyle(MissionTheme.accent.opacity(0.72))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+            ViewThatFits(in: .vertical) {
+                fullContent
+                compactContent
             }
-            .padding(.vertical, 7)
-            .padding(.horizontal, 8)
+            .padding(.vertical, isCompact ? 5 : 7)
+            .padding(.horizontal, isCompact ? 7 : 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(MissionTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(MissionTheme.elevatedPanel, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MissionTheme.eventIndicator)
+                    .frame(width: 3)
+                    .padding(.vertical, 7)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(item.title), \(weekday.title), from \(startText) to \(endText)")
+        .accessibilityLabel("\(item.title), \(weekday.title), \(timeRangeText)")
+    }
+
+    private var fullContent: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            titleText
+
+            timeText
+        }
+    }
+
+    private var compactContent: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                titleText
+                timeText
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+
+            titleText
+        }
+    }
+
+    private var titleText: some View {
+        Text(item.title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(MissionTheme.graphite)
+            .lineLimit(1)
+            .minimumScaleFactor(0.64)
+    }
+
+    private var timeText: some View {
+        Text(timeRangeText)
+            .font(.caption2.weight(.medium).monospacedDigit())
+            .foregroundStyle(MissionTheme.secondaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .allowsTightening(true)
     }
 }

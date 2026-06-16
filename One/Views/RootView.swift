@@ -1,14 +1,22 @@
 import SwiftData
 import SwiftUI
+import UserNotifications
+
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct RootView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(AppSettingsKey.notificationsEnabled) private var notificationsEnabled = false
 
     @Query(sort: \ScheduleItem.createdAt, order: .reverse) private var items: [ScheduleItem]
     @Query(sort: \RoutineOccurrenceState.updatedAt, order: .reverse) private var routineStates: [RoutineOccurrenceState]
 
     @State private var selectedPage: AppPage = .timetable
     @State private var editorMode: EditorMode?
+    @State private var pendingFailRequest: RoutineFailRequest?
 
     var body: some View {
         TabView(selection: $selectedPage) {
@@ -27,9 +35,18 @@ struct RootView: View {
             page(for: .streak)
                 .tabItem { Label(AppPage.streak.title, systemImage: AppPage.streak.symbolName) }
                 .tag(AppPage.streak)
+
+            page(for: .settings)
+                .tabItem { Label(AppPage.settings.title, systemImage: AppPage.settings.symbolName) }
+                .tag(AppPage.settings)
         }
         .tint(MissionTheme.accent)
-        .sheet(item: $editorMode) { mode in
+        .sheet(
+            item: $editorMode,
+            onDismiss: {
+                saveAndUpdateWidgetSnapshot()
+            }
+        ) { mode in
             switch mode {
             case let .new(kind, initialDate):
                 ScheduleItemEditorView(kind: kind, initialDate: initialDate)
@@ -37,15 +54,53 @@ struct RootView: View {
                 ScheduleItemEditorView(item: item)
             }
         }
+        .confirmationDialog(
+            "Why did this fail?",
+            isPresented: failReasonDialogBinding,
+            titleVisibility: .visible
+        ) {
+            ForEach(RoutineFailReason.allCases) { reason in
+                Button(reason.title) {
+                    resolvePendingFail(with: reason)
+                }
+            }
+
+            Button("Fail without reason", role: .destructive) {
+                resolvePendingFail(with: nil)
+            }
+
+            Button("Cancel", role: .cancel) {
+                pendingFailRequest = nil
+            }
+        } message: {
+            Text(pendingFailRequest?.routine.title ?? "Select a reason.")
+        }
         .onAppear {
-            updateWidgetSnapshot()
-            syncRoutineNotificationsIfAuthorized()
+            checkNotificationPermissionOnLaunch()
+            applyPendingWidgetRoutineOutcomes()
+            saveAndUpdateWidgetSnapshot()
+            syncRoutineNotifications()
         }
         .onChange(of: widgetSnapshotSignature) { _, _ in
-            updateWidgetSnapshot()
+            updateWidgetSnapshot(deferred: true)
         }
         .onChange(of: routineNotificationSignature) { _, _ in
-            syncRoutineNotificationsIfAuthorized()
+            syncRoutineNotifications()
+        }
+        .onChange(of: notificationsEnabled) { _, _ in
+            syncRoutineNotifications()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                applyPendingWidgetRoutineOutcomes()
+            }
+
+            if phase == .active || phase == .background {
+                saveAndUpdateWidgetSnapshot(deferred: false)
+            }
+            if phase == .active {
+                syncRoutineNotifications()
+            }
         }
         .onOpenURL { url in
             handleDeepLink(url)
@@ -66,7 +121,8 @@ struct RootView: View {
                     item.endTime?.timeIntervalSince1970.description ?? "",
                     item.repeatWeekdayMask.description,
                     item.activeFrom?.timeIntervalSince1970.description ?? "",
-                    item.activeUntil?.timeIntervalSince1970.description ?? ""
+                    item.activeUntil?.timeIntervalSince1970.description ?? "",
+                    item.routineLabelRawValue ?? ""
                 ].joined(separator: "|")
             }
             .joined(separator: ";")
@@ -76,17 +132,13 @@ struct RootView: View {
                     state.routineID.uuidString,
                     state.dayStart.timeIntervalSince1970.description,
                     state.statusRawValue,
+                    state.failReasonRawValue ?? "",
                     state.delayMinutes.description
                 ].joined(separator: "|")
             }
             .joined(separator: ";")
 
         return "\(itemSignature)#\(stateSignature)"
-    }
-
-    private func updateWidgetSnapshot(replacing updatedState: RoutineOccurrenceState? = nil) {
-        let states = routineStatesForWidget(replacing: updatedState)
-        WidgetSnapshotWriter.save(items: items, routineStates: states)
     }
 
     private var routineNotificationSignature: String {
@@ -99,6 +151,7 @@ struct RootView: View {
                     item.notes,
                     item.taskDate?.timeIntervalSince1970.description ?? "",
                     item.startTime?.timeIntervalSince1970.description ?? "",
+                    item.endTime?.timeIntervalSince1970.description ?? "",
                     item.repeatWeekdayMask.description,
                     item.activeFrom?.timeIntervalSince1970.description ?? "",
                     item.activeUntil?.timeIntervalSince1970.description ?? ""
@@ -107,11 +160,80 @@ struct RootView: View {
             .joined(separator: ";")
     }
 
-    private func syncRoutineNotificationsIfAuthorized() {
+    private func saveAndUpdateWidgetSnapshot(deferred: Bool = false) {
+        try? modelContext.save()
+        updateWidgetSnapshot(deferred: deferred)
+        syncRoutineNotifications()
+    }
+
+    private func checkNotificationPermissionOnLaunch() {
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                let granted = (try? await center.requestAuthorization(options: [.alert, .badge, .sound])) ?? false
+                let updatedSettings = await center.notificationSettings()
+
+                await MainActor.run {
+                    notificationsEnabled = granted && updatedSettings.authorizationStatus.allowsLaunchNotifications
+                }
+            case .authorized, .provisional, .ephemeral:
+                await MainActor.run {
+                    if UserDefaults.standard.object(forKey: AppSettingsKey.notificationsEnabled) == nil {
+                        notificationsEnabled = true
+                    }
+                }
+            case .denied:
+                await MainActor.run {
+                    notificationsEnabled = false
+                }
+                await RoutineNotificationScheduler.shared.cancelRoutineNotifications()
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    private func syncRoutineNotifications() {
         let schedules = items.compactMap(RoutineNotificationSchedule.init(item:))
+        #if canImport(UIKit)
+        let backgroundTaskID = scenePhase == .background
+            ? UIApplication.shared.beginBackgroundTask(withName: "SyncRoutineNotifications", expirationHandler: nil)
+            : UIBackgroundTaskIdentifier.invalid
+        #endif
 
         Task {
-            await RoutineNotificationScheduler.shared.syncNotificationsIfAuthorized(for: schedules)
+            await RoutineNotificationScheduler.shared.syncNotifications(
+                enabled: notificationsEnabled,
+                for: schedules
+            )
+            #if canImport(UIKit)
+            await MainActor.run {
+                if backgroundTaskID != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                }
+            }
+            #endif
+        }
+    }
+
+    private func updateWidgetSnapshot(
+        replacing updatedState: RoutineOccurrenceState? = nil,
+        deferred: Bool = false
+    ) {
+        let writeSnapshot = {
+            let states = routineStatesForWidget(replacing: updatedState)
+            WidgetSnapshotWriter.save(items: itemsForWidgetSnapshot(), routineStates: states)
+        }
+
+        if deferred {
+            DispatchQueue.main.async {
+                writeSnapshot()
+            }
+        } else {
+            writeSnapshot()
         }
     }
 
@@ -119,30 +241,107 @@ struct RootView: View {
     private func upsertRoutineState(
         for routine: ScheduleItem,
         on date: Date,
-        status: RoutineOccurrenceStatus
+        status: RoutineOccurrenceStatus,
+        failReason: RoutineFailReason? = nil,
+        updatesWidget: Bool = true
     ) -> RoutineOccurrenceState {
         let dayStart = Calendar.current.startOfDay(for: date)
-        let state = routineStates.state(for: routine, on: dayStart) ?? {
+        let existingStates = fetchedRoutineStates()
+        let state = existingStates.state(for: routine, on: dayStart) ?? {
             let newState = RoutineOccurrenceState(routineID: routine.id, dayStart: dayStart)
             modelContext.insert(newState)
             return newState
         }()
 
         state.status = status
+        state.failReason = status == .skipped ? failReason : nil
         try? modelContext.save()
-        updateWidgetSnapshot(replacing: state)
+        if updatesWidget {
+            updateWidgetSnapshot(replacing: state)
+        }
         return state
     }
 
-    private func routineStatesForWidget(replacing updatedState: RoutineOccurrenceState?) -> [RoutineOccurrenceState] {
-        guard let updatedState else {
-            return routineStates
+    private var failReasonDialogBinding: Binding<Bool> {
+        Binding {
+            pendingFailRequest != nil
+        } set: { isPresented in
+            if !isPresented {
+                pendingFailRequest = nil
+            }
+        }
+    }
+
+    private func resolvePendingFail(with reason: RoutineFailReason?) {
+        guard let request = pendingFailRequest else {
+            return
         }
 
-        return routineStates.filter { state in
+        pendingFailRequest = nil
+        upsertRoutineState(
+            for: request.routine,
+            on: request.date,
+            status: .skipped,
+            failReason: reason
+        )
+    }
+
+    private func routineStatesForWidget(replacing updatedState: RoutineOccurrenceState?) -> [RoutineOccurrenceState] {
+        let states = fetchedRoutineStates()
+
+        guard let updatedState else {
+            return states
+        }
+
+        return states.filter { state in
             state.routineID != updatedState.routineID
                 || !Calendar.current.isDate(state.dayStart, inSameDayAs: updatedState.dayStart)
         } + [updatedState]
+    }
+
+    private func itemsForWidgetSnapshot() -> [ScheduleItem] {
+        let descriptor = FetchDescriptor<ScheduleItem>()
+        return (try? modelContext.fetch(descriptor)) ?? items
+    }
+
+    private func fetchedRoutineStates() -> [RoutineOccurrenceState] {
+        let descriptor = FetchDescriptor<RoutineOccurrenceState>()
+        return (try? modelContext.fetch(descriptor)) ?? routineStates
+    }
+
+    private func applyPendingWidgetRoutineOutcomes() {
+        let commands = WidgetSnapshotStore.consumePendingRoutineOutcomes()
+        guard !commands.isEmpty else {
+            return
+        }
+
+        let routines = itemsForWidgetSnapshot().filter { $0.kind == .routine }
+
+        for command in commands {
+            guard let routine = routines.first(where: { $0.id == command.routineID }) else {
+                continue
+            }
+
+            let status: RoutineOccurrenceStatus
+            switch command.outcome {
+            case .success:
+                status = .done
+            case .fail:
+                status = .skipped
+            case .pending:
+                continue
+            }
+
+            upsertRoutineState(
+                for: routine,
+                on: command.occurredAt,
+                status: status,
+                updatesWidget: false
+            )
+        }
+
+        try? modelContext.save()
+        updateWidgetSnapshot()
     }
 
     private func handleDeepLink(_ url: URL) {
@@ -160,6 +359,8 @@ struct RootView: View {
             selectedPage = .routines
         case "streak":
             selectedPage = .streak
+        case "settings":
+            selectedPage = .settings
         default:
             selectedPage = .timetable
         }
@@ -216,12 +417,6 @@ struct RootView: View {
             return active.routine
         }
 
-        if let next = candidates
-            .filter({ $0.startMinute >= currentMinute })
-            .min(by: { $0.startMinute < $1.startMinute }) {
-            return next.routine
-        }
-
         return candidates
             .filter { $0.endMinute <= currentMinute }
             .max(by: { $0.endMinute < $1.endMinute })?
@@ -264,12 +459,15 @@ struct RootView: View {
                     upsertRoutineState(for: routine, on: date, status: .done)
                 },
                 onSkipRoutine: { routine, date in
-                    upsertRoutineState(for: routine, on: date, status: .skipped)
+                    pendingFailRequest = RoutineFailRequest(routine: routine, date: date)
                 }
             )
         case .tasks:
             TasksPageView(
-                items: items
+                items: items,
+                onItemsChanged: {
+                    saveAndUpdateWidgetSnapshot()
+                }
             )
         case .routines:
             RoutinePlannerPageView(
@@ -281,6 +479,8 @@ struct RootView: View {
                 items: items,
                 routineStates: routineStates
             )
+        case .settings:
+            SettingsPageView()
         }
     }
 }
@@ -299,7 +499,26 @@ private enum EditorMode: Identifiable {
     }
 }
 
+private struct RoutineFailRequest: Identifiable {
+    let id = UUID()
+    let routine: ScheduleItem
+    let date: Date
+}
+
 #Preview {
     RootView()
         .modelContainer(for: [ScheduleItem.self, RoutineOccurrenceState.self], inMemory: true)
+}
+
+private extension UNAuthorizationStatus {
+    var allowsLaunchNotifications: Bool {
+        switch self {
+        case .authorized, .provisional, .ephemeral:
+            true
+        case .notDetermined, .denied:
+            false
+        @unknown default:
+            false
+        }
+    }
 }

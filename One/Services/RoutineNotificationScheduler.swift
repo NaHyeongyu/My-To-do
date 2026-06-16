@@ -2,245 +2,360 @@ import Foundation
 import UserNotifications
 
 struct RoutineNotificationSchedule: Sendable {
-    let id: UUID
+    let routineID: UUID
     let title: String
     let notes: String
     let taskDate: Date?
-    let startTime: Date?
+    let startTime: Date
+    let endTime: Date?
     let repeatWeekdayMask: Int
+    let activeFrom: Date?
+    let activeUntil: Date?
 
     init?(item: ScheduleItem) {
-        guard item.kind == .routine, item.canScheduleRoutineNotifications() else {
+        guard item.canScheduleRoutineNotifications(), let startTime = item.startTime else {
             return nil
         }
 
-        self.id = item.id
+        self.routineID = item.id
         self.title = item.title
         self.notes = item.notes
         self.taskDate = item.taskDate
-        self.startTime = item.startTime
+        self.startTime = startTime
+        self.endTime = item.endTime
         self.repeatWeekdayMask = item.repeatWeekdayMask
-    }
-}
-
-enum RoutineNotificationAction {
-    static let categoryIdentifier = "routine-check-in"
-    static let routineIDKey = "routineID"
-    static let successIdentifier = "routine.success"
-    static let failIdentifier = "routine.fail"
-    static let snoozeIdentifier = "routine.snooze"
-    static let snoozeMinutes = 10
-
-    static func register(on center: UNUserNotificationCenter = .current()) {
-        let actions = [
-            UNNotificationAction(
-                identifier: successIdentifier,
-                title: "Success",
-                options: []
-            ),
-            UNNotificationAction(
-                identifier: failIdentifier,
-                title: "Fail",
-                options: [.destructive]
-            ),
-            UNNotificationAction(
-                identifier: snoozeIdentifier,
-                title: "Snooze 10m",
-                options: []
-            )
-        ]
-
-        let category = UNNotificationCategory(
-            identifier: categoryIdentifier,
-            actions: actions,
-            intentIdentifiers: [],
-            options: []
-        )
-
-        center.setNotificationCategories([category])
+        self.activeFrom = item.activeFrom
+        self.activeUntil = item.activeUntil
     }
 }
 
 actor RoutineNotificationScheduler {
     static let shared = RoutineNotificationScheduler()
 
-    private static let soundName = UNNotificationSoundName("one_signal.wav")
+    private let identifierPrefix = "one.routine.start."
+    private let allRoutineIdentifierPrefix = "one.routine."
+    private let horizonDays = 60
+    private let maxScheduledNotifications = 60
 
-    private let center = UNUserNotificationCenter.current()
-    private let identifierPrefix = "routine-notification"
+    private var center: UNUserNotificationCenter {
+        UNUserNotificationCenter.current()
+    }
 
-    private init() {}
-
-    func syncNotifications(for schedules: [RoutineNotificationSchedule]) async {
-        await cancelAllRoutineNotifications()
-
-        guard await requestAuthorizationIfNeeded() else {
+    func syncNotifications(
+        enabled: Bool,
+        for schedules: [RoutineNotificationSchedule],
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) async {
+        guard enabled else {
+            await cancelRoutineNotifications()
             return
         }
 
-        for schedule in schedules {
-            await addNotifications(for: schedule)
-        }
-    }
-
-    func syncNotificationsIfAuthorized(for schedules: [RoutineNotificationSchedule]) async {
-        guard await hasNotificationAuthorization() else {
+        let settings = await center.notificationSettings()
+        guard settings.authorizationStatus.allowsRoutineNotifications else {
+            await cancelRoutineNotifications()
             return
         }
 
-        await cancelAllRoutineNotifications()
+        await cancelRoutineNotifications()
 
-        for schedule in schedules {
-            await addNotifications(for: schedule)
-        }
-    }
-
-    func scheduleNotifications(for schedule: RoutineNotificationSchedule) async {
-        await cancelNotifications(for: schedule.id)
-
-        guard await requestAuthorizationIfNeeded() else {
-            return
-        }
-
-        await addNotifications(for: schedule)
-    }
-
-    func cancelNotifications(for itemID: UUID) async {
-        let prefix = notificationPrefix(for: itemID)
-        let pending = await center.pendingNotificationRequests()
-        let pendingIDs = pending
-            .map(\.identifier)
-            .filter { $0.hasPrefix(prefix) }
-
-        center.removePendingNotificationRequests(withIdentifiers: pendingIDs)
-
-        let delivered = await center.deliveredNotifications()
-        let deliveredIDs = delivered
-            .map(\.request.identifier)
-            .filter { $0.hasPrefix(prefix) }
-
-        center.removeDeliveredNotifications(withIdentifiers: deliveredIDs)
-    }
-
-    private func cancelAllRoutineNotifications() async {
-        let pending = await center.pendingNotificationRequests()
-        let pendingIDs = pending
-            .map(\.identifier)
-            .filter { $0.hasPrefix(identifierPrefix) }
-
-        center.removePendingNotificationRequests(withIdentifiers: pendingIDs)
-    }
-
-    private func addNotifications(for schedule: RoutineNotificationSchedule) async {
-        for request in notificationRequests(for: schedule) {
-            do {
-                try await center.add(request)
-            } catch {
-                continue
+        let requestPayloads = notificationRequestPayloads(for: schedules, now: now, calendar: calendar)
+        await withTaskGroup(of: Void.self) { group in
+            for payload in requestPayloads {
+                group.addTask {
+                    await Self.add(payload)
+                }
             }
         }
     }
 
-    private func notificationRequests(for schedule: RoutineNotificationSchedule) -> [UNNotificationRequest] {
-        guard let startTime = schedule.startTime else {
-            return []
+    func cancelRoutineNotifications() async {
+        let identifiers = await pendingRoutineNotificationIdentifiers()
+        guard !identifiers.isEmpty else {
+            return
         }
 
-        if let taskDate = schedule.taskDate {
-            return dateAnchoredRequest(for: schedule, taskDate: taskDate, startTime: startTime).map { [$0] } ?? []
-        }
-
-        let mask = schedule.repeatWeekdayMask == 0 ? RepeatWeekdayMask.everyDay : schedule.repeatWeekdayMask
-        return RepeatWeekday.allCases
-            .filter { RepeatWeekdayMask.contains($0, in: mask) }
-            .map { weekday in
-                var components = Calendar.current.dateComponents([.hour, .minute], from: startTime)
-                components.weekday = weekday.rawValue
-
-                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
-                return UNNotificationRequest(
-                    identifier: notificationID(for: schedule.id, suffix: "weekday-\(weekday.rawValue)"),
-                    content: notificationContent(for: schedule),
-                    trigger: trigger
-                )
-            }
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 
-    private func dateAnchoredRequest(
+    private func notificationRequestPayloads(
+        for schedules: [RoutineNotificationSchedule],
+        now: Date,
+        calendar: Calendar
+    ) -> [RoutineNotificationRequestPayload] {
+        schedules
+            .flatMap { notificationEvents(for: $0, now: now, calendar: calendar) }
+            .sorted { $0.fireDate < $1.fireDate }
+            .prefix(maxScheduledNotifications)
+            .map { requestPayload(for: $0, calendar: calendar) }
+    }
+
+    private func notificationEvents(
         for schedule: RoutineNotificationSchedule,
-        taskDate: Date,
-        startTime: Date
-    ) -> UNNotificationRequest? {
-        let calendar = Calendar.current
-        let dateComponents = calendar.dateComponents([.year, .month, .day], from: taskDate)
-        let timeComponents = calendar.dateComponents([.hour, .minute], from: startTime)
+        now: Date,
+        calendar: Calendar
+    ) -> [RoutineNotificationEvent] {
+        if let taskDate = schedule.taskDate {
+            let dayStart = calendar.startOfDay(for: taskDate)
+            guard isSchedule(schedule, activeOn: dayStart, calendar: calendar) else {
+                return []
+            }
+
+            return events(for: schedule, dayStart: dayStart, now: now, calendar: calendar)
+        }
+
+        let today = calendar.startOfDay(for: now)
+        return (0..<horizonDays).flatMap { dayOffset -> [RoutineNotificationEvent] in
+            guard let dayStart = calendar.date(byAdding: .day, value: dayOffset, to: today) else {
+                return []
+            }
+
+            guard
+                isSchedule(schedule, activeOn: dayStart, calendar: calendar),
+                repeats(schedule, on: dayStart, calendar: calendar)
+            else {
+                return []
+            }
+
+            return events(for: schedule, dayStart: dayStart, now: now, calendar: calendar)
+        }
+    }
+
+    private func events(
+        for schedule: RoutineNotificationSchedule,
+        dayStart: Date,
+        now: Date,
+        calendar: Calendar
+    ) -> [RoutineNotificationEvent] {
+        RoutineNotificationEventKind.allCases.compactMap { kind in
+            guard
+                let fireDate = fireDate(for: kind, schedule: schedule, dayStart: dayStart, calendar: calendar),
+                fireDate > now
+            else {
+                return nil
+            }
+
+            return RoutineNotificationEvent(
+                kind: kind,
+                schedule: schedule,
+                dayStart: dayStart,
+                fireDate: fireDate
+            )
+        }
+    }
+
+    private func requestPayload(
+        for event: RoutineNotificationEvent,
+        calendar: Calendar
+    ) -> RoutineNotificationRequestPayload {
+        let components = calendar.dateComponents(
+            [.year, .month, .day, .hour, .minute],
+            from: event.fireDate
+        )
+
+        return RoutineNotificationRequestPayload(
+            identifier: identifier(for: event),
+            title: event.kind.notificationTitle,
+            body: event.schedule.title,
+            subtitle: event.schedule.notes.isEmpty ? nil : event.schedule.notes,
+            routineID: event.schedule.routineID.uuidString,
+            dayStartTimestamp: event.dayStart.timeIntervalSince1970,
+            eventRawValue: event.kind.rawValue,
+            year: components.year,
+            month: components.month,
+            day: components.day,
+            hour: components.hour,
+            minute: components.minute
+        )
+    }
+
+    private static func request(for payload: RoutineNotificationRequestPayload) -> UNNotificationRequest {
+        let content = UNMutableNotificationContent()
+        content.title = payload.title
+        content.body = payload.body
+        content.sound = .default
+        content.threadIdentifier = "routine"
+        content.userInfo = [
+            "routineID": payload.routineID,
+            "dayStart": payload.dayStartTimestamp,
+            "event": payload.eventRawValue
+        ]
+
+        if let subtitle = payload.subtitle {
+            content.subtitle = subtitle
+        }
 
         var components = DateComponents()
-        components.year = dateComponents.year
-        components.month = dateComponents.month
-        components.day = dateComponents.day
-        components.hour = timeComponents.hour
-        components.minute = timeComponents.minute
-
-        guard let fireDate = calendar.date(from: components), fireDate > Date.now else {
-            return nil
-        }
-
+        components.year = payload.year
+        components.month = payload.month
+        components.day = payload.day
+        components.hour = payload.hour
+        components.minute = payload.minute
         let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+
         return UNNotificationRequest(
-            identifier: notificationID(for: schedule.id, suffix: "date"),
-            content: notificationContent(for: schedule),
+            identifier: payload.identifier,
+            content: content,
             trigger: trigger
         )
     }
 
-    private func notificationContent(for schedule: RoutineNotificationSchedule) -> UNMutableNotificationContent {
-        let content = UNMutableNotificationContent()
-        content.title = schedule.title
-        content.body = schedule.notes.isEmpty ? "Routine starts now." : schedule.notes
-        content.categoryIdentifier = RoutineNotificationAction.categoryIdentifier
-        content.userInfo = [RoutineNotificationAction.routineIDKey: schedule.id.uuidString]
-        content.sound = UNNotificationSound(named: Self.soundName)
-        return content
+    private func identifier(for event: RoutineNotificationEvent) -> String {
+        [
+            allRoutineIdentifierPrefix + event.kind.rawValue,
+            event.schedule.routineID.uuidString,
+            Int(event.dayStart.timeIntervalSince1970).description
+        ].joined(separator: ".")
     }
 
-    private func requestAuthorizationIfNeeded() async -> Bool {
-        let settings = await center.notificationSettings()
-
-        switch settings.authorizationStatus {
-        case .authorized, .provisional, .ephemeral:
-            return true
-        case .notDetermined:
-            do {
-                return try await center.requestAuthorization(options: [.alert, .sound])
-            } catch {
-                return false
+    private func pendingRoutineNotificationIdentifiers() async -> [String] {
+        await withCheckedContinuation { continuation in
+            center.getPendingNotificationRequests { [identifierPrefix, allRoutineIdentifierPrefix] requests in
+                continuation.resume(
+                    returning: requests
+                        .map(\.identifier)
+                        .filter {
+                            $0.hasPrefix(identifierPrefix) || $0.hasPrefix(allRoutineIdentifierPrefix)
+                        }
+                )
             }
-        case .denied:
-            return false
-        @unknown default:
-            return false
         }
     }
 
-    private func hasNotificationAuthorization() async -> Bool {
-        let settings = await center.notificationSettings()
+    private static func add(_ payload: RoutineNotificationRequestPayload) async {
+        let request = request(for: payload)
+        try? await add(request, to: .current())
+    }
 
-        switch settings.authorizationStatus {
+    private static func add(_ request: UNNotificationRequest, to center: UNUserNotificationCenter) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            center.add(request) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    private func isSchedule(
+        _ schedule: RoutineNotificationSchedule,
+        activeOn dayStart: Date,
+        calendar: Calendar
+    ) -> Bool {
+        if let activeFrom = schedule.activeFrom, dayStart < calendar.startOfDay(for: activeFrom) {
+            return false
+        }
+
+        if let activeUntil = schedule.activeUntil, dayStart >= calendar.startOfDay(for: activeUntil) {
+            return false
+        }
+
+        return true
+    }
+
+    private func repeats(
+        _ schedule: RoutineNotificationSchedule,
+        on dayStart: Date,
+        calendar: Calendar
+    ) -> Bool {
+        let weekdayNumber = calendar.component(.weekday, from: dayStart)
+        guard let weekday = RepeatWeekday(rawValue: weekdayNumber) else {
+            return false
+        }
+
+        return RepeatWeekdayMask.contains(weekday, in: schedule.repeatWeekdayMask)
+    }
+
+    private func fireDate(
+        for kind: RoutineNotificationEventKind,
+        schedule: RoutineNotificationSchedule,
+        dayStart: Date,
+        calendar: Calendar
+    ) -> Date? {
+        guard let startDate = fireDate(for: dayStart, time: schedule.startTime, calendar: calendar) else {
+            return nil
+        }
+
+        switch kind {
+        case .start:
+            return startDate
+        case .end:
+            guard
+                let endTime = schedule.endTime,
+                let endDate = fireDate(for: dayStart, time: endTime, calendar: calendar)
+            else {
+                return nil
+            }
+
+            if endDate > startDate {
+                return endDate
+            }
+
+            return calendar.date(byAdding: .day, value: 1, to: endDate)
+        }
+    }
+
+    private func fireDate(
+        for dayStart: Date,
+        time: Date,
+        calendar: Calendar
+    ) -> Date? {
+        let timeComponents = calendar.dateComponents([.hour, .minute], from: time)
+        return calendar.date(
+            bySettingHour: timeComponents.hour ?? 0,
+            minute: timeComponents.minute ?? 0,
+            second: 0,
+            of: dayStart
+        )
+    }
+}
+
+private enum RoutineNotificationEventKind: String, CaseIterable, Sendable {
+    case start
+    case end
+
+    var notificationTitle: String {
+        switch self {
+        case .start: "Routine starts"
+        case .end: "Routine ends"
+        }
+    }
+}
+
+private struct RoutineNotificationEvent: Sendable {
+    let kind: RoutineNotificationEventKind
+    let schedule: RoutineNotificationSchedule
+    let dayStart: Date
+    let fireDate: Date
+}
+
+private struct RoutineNotificationRequestPayload: Sendable {
+    let identifier: String
+    let title: String
+    let body: String
+    let subtitle: String?
+    let routineID: String
+    let dayStartTimestamp: TimeInterval
+    let eventRawValue: String
+    let year: Int?
+    let month: Int?
+    let day: Int?
+    let hour: Int?
+    let minute: Int?
+}
+
+private extension UNAuthorizationStatus {
+    var allowsRoutineNotifications: Bool {
+        switch self {
         case .authorized, .provisional, .ephemeral:
-            return true
+            true
         case .notDetermined, .denied:
-            return false
+            false
         @unknown default:
-            return false
+            false
         }
-    }
-
-    private func notificationPrefix(for itemID: UUID) -> String {
-        "\(identifierPrefix)-\(itemID.uuidString)"
-    }
-
-    private func notificationID(for itemID: UUID, suffix: String) -> String {
-        "\(notificationPrefix(for: itemID))-\(suffix)"
     }
 }

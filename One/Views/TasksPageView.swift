@@ -5,6 +5,9 @@ struct TasksPageView: View {
     @Environment(\.modelContext) private var modelContext
 
     let items: [ScheduleItem]
+    let onItemsChanged: () -> Void
+
+    private let horizontalPadding: CGFloat = 16
 
     private var openTaskIDs: [UUID] {
         openTasks.map(\.id)
@@ -24,16 +27,16 @@ struct TasksPageView: View {
 
     var body: some View {
         List {
-            QuickSingleTaskRow()
-                .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+            QuickSingleTaskRow(onItemsChanged: onItemsChanged)
+                .listRowInsets(EdgeInsets(top: 6, leading: horizontalPadding, bottom: 6, trailing: horizontalPadding))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
 
             ForEach(openTasks) { item in
-                TodayTaskRowView(item: item)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
-                    .listRowBackground(TaskListPalette.rowBackground)
-                    .listRowSeparatorTint(TaskListPalette.separator.opacity(0.55))
+                TodayTaskRowView(item: item, onItemsChanged: onItemsChanged)
+                    .listRowInsets(EdgeInsets(top: 4, leading: horizontalPadding, bottom: 4, trailing: horizontalPadding))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
@@ -45,6 +48,7 @@ struct TasksPageView: View {
             }
         }
         .listStyle(.plain)
+        .scrollDismissesKeyboard(.interactively)
         .environment(\.defaultMinListRowHeight, 42)
         .animation(.snappy(duration: 0.18), value: openTaskIDs)
         .animation(.snappy(duration: 0.18), value: completedTaskIDs)
@@ -57,11 +61,15 @@ struct TasksPageView: View {
                 CompletedPinnedButton(count: completedTasks.count)
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, horizontalPadding)
             .padding(.top, 6)
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity)
-            .background(TaskListPalette.background.ignoresSafeArea(edges: .bottom))
+            .background {
+                Rectangle()
+                    .fill(.regularMaterial)
+                    .ignoresSafeArea(edges: .bottom)
+            }
         }
     }
 
@@ -69,6 +77,7 @@ struct TasksPageView: View {
         withAnimation(.snappy(duration: 0.18)) {
             modelContext.delete(item)
         }
+        onItemsChanged()
     }
 }
 
@@ -104,10 +113,10 @@ private struct CompletedPinnedButton: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity)
-        .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TaskListPalette.separator.opacity(0.28), lineWidth: 0.5)
+                .stroke(TaskListPalette.glassStroke, lineWidth: 0.5)
         }
     }
 }

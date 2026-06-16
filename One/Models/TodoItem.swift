@@ -3,18 +3,19 @@ import SwiftData
 
 @Model
 final class ScheduleItem: Identifiable {
-    var id: UUID
-    var kindRawValue: String
-    var title: String
-    var notes: String
-    var createdAt: Date
+    var id: UUID = UUID()
+    var kindRawValue: String = ScheduleKind.task.rawValue
+    var title: String = ""
+    var notes: String = ""
+    var createdAt: Date = Date()
     var taskDate: Date?
     var completedAt: Date?
     var startTime: Date?
     var endTime: Date?
-    var repeatWeekdayMask: Int
+    var repeatWeekdayMask: Int = RepeatWeekdayMask.everyDay
     var activeFrom: Date?
     var activeUntil: Date?
+    var routineLabelRawValue: String?
 
     init(
         id: UUID = UUID(),
@@ -28,7 +29,8 @@ final class ScheduleItem: Identifiable {
         endTime: Date? = nil,
         repeatWeekdayMask: Int = RepeatWeekdayMask.everyDay,
         activeFrom: Date? = nil,
-        activeUntil: Date? = nil
+        activeUntil: Date? = nil,
+        routineLabel: RoutineLabel? = nil
     ) {
         self.id = id
         self.kindRawValue = kind.rawValue
@@ -42,13 +44,78 @@ final class ScheduleItem: Identifiable {
         self.repeatWeekdayMask = repeatWeekdayMask
         self.activeFrom = activeFrom
         self.activeUntil = activeUntil
+        self.routineLabelRawValue = kind == .routine ? routineLabel?.rawValue : nil
+    }
+}
+
+enum RoutineLabel: String, CaseIterable, Identifiable, Hashable {
+    case study
+    case coding
+    case work
+    case life
+    case play
+    case hobby
+    case rest
+    case sleep
+    case health
+    case money
+    case admin
+    case social
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .study: "Study"
+        case .coding: "Coding"
+        case .work: "Work"
+        case .life: "Life"
+        case .play: "Play"
+        case .hobby: "Hobby"
+        case .rest: "Rest"
+        case .sleep: "Sleep"
+        case .health: "Health"
+        case .money: "Money"
+        case .admin: "Admin"
+        case .social: "Social"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .study: "book.closed.fill"
+        case .coding: "chevron.left.forwardslash.chevron.right"
+        case .work: "briefcase.fill"
+        case .life: "heart.fill"
+        case .play: "gamecontroller.fill"
+        case .hobby: "paintpalette.fill"
+        case .rest: "pause.circle.fill"
+        case .sleep: "bed.double.fill"
+        case .health: "figure.run"
+        case .money: "banknote.fill"
+        case .admin: "tray.full.fill"
+        case .social: "person.2.fill"
+        }
     }
 }
 
 extension ScheduleItem {
+    static let minutesPerDay = 24 * 60
+
     var kind: ScheduleKind {
         get { ScheduleKind(rawValue: kindRawValue) ?? .task }
         set { kindRawValue = newValue.rawValue }
+    }
+
+    var routineLabel: RoutineLabel? {
+        get {
+            guard let routineLabelRawValue else {
+                return nil
+            }
+
+            return RoutineLabel(rawValue: routineLabelRawValue)
+        }
+        set { routineLabelRawValue = newValue?.rawValue }
     }
 
     var isCompleted: Bool {
@@ -104,7 +171,39 @@ extension ScheduleItem {
 
     func durationMinutes(calendar: Calendar = .current) -> Int {
         guard let startTime, let endTime else { return 0 }
-        return max(0, calendar.minuteOfDay(for: endTime) - calendar.minuteOfDay(for: startTime))
+        return Self.durationMinutes(startTime: startTime, endTime: endTime, calendar: calendar)
+    }
+
+    func crossesMidnight(calendar: Calendar = .current) -> Bool {
+        guard let startTime, let endTime else { return false }
+        return Self.crossesMidnight(startTime: startTime, endTime: endTime, calendar: calendar)
+    }
+
+    func normalizedEndMinute(calendar: Calendar = .current) -> Int? {
+        guard let startTime, let endTime else { return nil }
+        let startMinute = calendar.minuteOfDay(for: startTime)
+        let endMinute = calendar.minuteOfDay(for: endTime)
+        return endMinute > startMinute ? endMinute : endMinute + Self.minutesPerDay
+    }
+
+    func timeRangeText(calendar: Calendar = .current) -> String {
+        guard let startTime, let endTime else { return "No time set" }
+
+        let startText = startTime.formatted(.dateTime.hour().minute())
+        let endText = endTime.formatted(.dateTime.hour().minute())
+        let suffix = crossesMidnight(calendar: calendar) ? " +1d" : ""
+        return "\(startText) - \(endText)\(suffix)"
+    }
+
+    static func durationMinutes(startTime: Date, endTime: Date, calendar: Calendar = .current) -> Int {
+        let startMinute = calendar.minuteOfDay(for: startTime)
+        let endMinute = calendar.minuteOfDay(for: endTime)
+        let normalizedEndMinute = endMinute > startMinute ? endMinute : endMinute + minutesPerDay
+        return max(0, normalizedEndMinute - startMinute)
+    }
+
+    static func crossesMidnight(startTime: Date, endTime: Date, calendar: Calendar = .current) -> Bool {
+        calendar.minuteOfDay(for: endTime) <= calendar.minuteOfDay(for: startTime)
     }
 
     func durationText(calendar: Calendar = .current) -> String {

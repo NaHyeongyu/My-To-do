@@ -15,6 +15,8 @@ struct ScheduleItemEditorView: View {
     @State private var startTime: Date
     @State private var endTime: Date
     @State private var repeatWeekdayMask: Int
+    @State private var routineLabel: RoutineLabel?
+    @State private var showsDeleteConfirmation = false
 
     init(item: ScheduleItem? = nil, kind: ScheduleKind = .task, initialDate: Date? = nil) {
         let editorKind = item?.kind ?? kind
@@ -39,6 +41,7 @@ struct ScheduleItemEditorView: View {
         _startTime = State(initialValue: calendar.dateBySnappingToFiveMinute(item?.startTime ?? defaultStart))
         _endTime = State(initialValue: calendar.dateBySnappingToFiveMinute(item?.endTime ?? defaultEnd))
         _repeatWeekdayMask = State(initialValue: item?.repeatWeekdayMask ?? defaultRepeatWeekdayMask)
+        _routineLabel = State(initialValue: item?.routineLabel)
     }
 
     var body: some View {
@@ -56,12 +59,17 @@ struct ScheduleItemEditorView: View {
 
                 switch kind {
                 case .routine:
+                    routineLabelSection
                     routineSection
                     if !isDateAnchoredRoutine {
                         repeatSection
                     }
                 case .task:
                     taskSection
+                }
+
+                if canDeleteRoutine {
+                    deleteRoutineSection
                 }
             }
             .formStyle(.grouped)
@@ -91,6 +99,19 @@ struct ScheduleItemEditorView: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .confirmationDialog(
+            "Delete Routine?",
+            isPresented: $showsDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Routine", role: .destructive) {
+                deleteRoutine()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the routine and its check-in history.")
+        }
     }
 
     private var routineSection: some View {
@@ -98,10 +119,34 @@ struct ScheduleItemEditorView: View {
             FiveMinuteTimePickerRow(title: "Start", selection: $startTime)
             FiveMinuteTimePickerRow(title: "End", selection: $endTime)
 
-            if !hasValidRoutineTime {
-                Text("End time must be after start time.")
+            if routineEndsNextDay {
+                Text("Ends next day.")
                     .font(.footnote)
-                    .foregroundStyle(MissionTheme.danger)
+                    .foregroundStyle(MissionTheme.secondaryText)
+            }
+        }
+    }
+
+    private var routineLabelSection: some View {
+        Section("Label") {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 10),
+                    GridItem(.flexible(), spacing: 10)
+                ],
+                spacing: 10
+            ) {
+                ForEach(RoutineLabel.allCases) { label in
+                    Button {
+                        withAnimation(.snappy(duration: 0.18)) {
+                            routineLabel = routineLabel == label ? nil : label
+                        }
+                    } label: {
+                        RoutineLabelBadge(label: label, isSelected: routineLabel == label)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(routineLabel == label ? .isSelected : [])
+                }
             }
         }
     }
@@ -121,6 +166,17 @@ struct ScheduleItemEditorView: View {
     private var taskSection: some View {
         Section {
             DatePicker("Date", selection: $taskDate, displayedComponents: [.date])
+        }
+    }
+
+    private var deleteRoutineSection: some View {
+        Section {
+            Button(role: .destructive) {
+                showsDeleteConfirmation = true
+            } label: {
+                Label("Delete Routine", systemImage: "trash")
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
         }
     }
 
@@ -144,7 +200,22 @@ struct ScheduleItemEditorView: View {
         let calendar = Calendar.current
         let snappedStartTime = calendar.dateBySnappingToFiveMinute(startTime)
         let snappedEndTime = calendar.dateBySnappingToFiveMinute(endTime)
-        return calendar.minuteOfDay(for: snappedEndTime) > calendar.minuteOfDay(for: snappedStartTime)
+        return ScheduleItem.durationMinutes(
+            startTime: snappedStartTime,
+            endTime: snappedEndTime,
+            calendar: calendar
+        ) > 0
+    }
+
+    private var routineEndsNextDay: Bool {
+        let calendar = Calendar.current
+        let snappedStartTime = calendar.dateBySnappingToFiveMinute(startTime)
+        let snappedEndTime = calendar.dateBySnappingToFiveMinute(endTime)
+        return ScheduleItem.crossesMidnight(
+            startTime: snappedStartTime,
+            endTime: snappedEndTime,
+            calendar: calendar
+        )
     }
 
     private var isSaveDisabled: Bool {
@@ -159,9 +230,11 @@ struct ScheduleItemEditorView: View {
         return false
     }
 
+    private var canDeleteRoutine: Bool {
+        item?.kind == .routine
+    }
+
     private func save() {
-        var notificationSchedule: RoutineNotificationSchedule?
-        var notificationCancellationID: UUID?
         let calendar = Calendar.current
         let snappedStartTime = calendar.dateBySnappingToFiveMinute(startTime)
         let snappedEndTime = calendar.dateBySnappingToFiveMinute(endTime)
@@ -174,7 +247,6 @@ struct ScheduleItemEditorView: View {
         if let item {
             if shouldCreateRoutineVersion(for: item, todayStart: todayStart, calendar: calendar) {
                 item.activeUntil = todayStart
-                notificationCancellationID = item.id
 
                 let newItem = ScheduleItem(
                     kind: .routine,
@@ -184,11 +256,11 @@ struct ScheduleItemEditorView: View {
                     startTime: snappedStartTime,
                     endTime: snappedEndTime,
                     repeatWeekdayMask: routineRepeatWeekdayMask,
-                    activeFrom: todayStart
+                    activeFrom: todayStart,
+                    routineLabel: routineLabel
                 )
                 modelContext.insert(newItem)
                 moveCurrentRoutineStates(from: item.id, to: newItem.id, startingAt: todayStart)
-                notificationSchedule = RoutineNotificationSchedule(item: newItem)
             } else {
                 item.kind = kind
                 item.title = trimmedTitle
@@ -203,6 +275,7 @@ struct ScheduleItemEditorView: View {
                     item.repeatWeekdayMask = routineRepeatWeekdayMask
                     item.activeFrom = routineDate == nil ? (item.activeFrom ?? todayStart) : nil
                     item.activeUntil = nil
+                    item.routineLabel = routineLabel
                 case .task:
                     item.taskDate = taskDate
                     item.startTime = nil
@@ -210,10 +283,8 @@ struct ScheduleItemEditorView: View {
                     item.repeatWeekdayMask = 0
                     item.activeFrom = nil
                     item.activeUntil = nil
-                    notificationCancellationID = item.id
+                    item.routineLabelRawValue = nil
                 }
-
-                notificationSchedule = RoutineNotificationSchedule(item: item)
             }
         } else {
             let newItem = ScheduleItem(
@@ -224,26 +295,14 @@ struct ScheduleItemEditorView: View {
                 startTime: kind == .routine ? snappedStartTime : nil,
                 endTime: kind == .routine ? snappedEndTime : nil,
                 repeatWeekdayMask: kind == .routine ? routineRepeatWeekdayMask : 0,
-                activeFrom: kind == .routine && routineDate == nil ? todayStart : nil
+                activeFrom: kind == .routine && routineDate == nil ? todayStart : nil,
+                routineLabel: kind == .routine ? routineLabel : nil
             )
             modelContext.insert(newItem)
-            notificationSchedule = RoutineNotificationSchedule(item: newItem)
         }
 
-        updateRoutineNotification(schedule: notificationSchedule, cancellationID: notificationCancellationID)
+        try? modelContext.save()
         dismiss()
-    }
-
-    private func updateRoutineNotification(schedule: RoutineNotificationSchedule?, cancellationID: UUID?) {
-        Task {
-            if let cancellationID {
-                await RoutineNotificationScheduler.shared.cancelNotifications(for: cancellationID)
-            }
-
-            if let schedule {
-                await RoutineNotificationScheduler.shared.scheduleNotifications(for: schedule)
-            }
-        }
     }
 
     private func shouldCreateRoutineVersion(
@@ -270,6 +329,28 @@ struct ScheduleItemEditorView: View {
 
         for state in states where state.routineID == oldID && state.dayStart >= dayStart {
             state.routineID = newID
+        }
+    }
+
+    private func deleteRoutine() {
+        guard let item, item.kind == .routine else {
+            return
+        }
+
+        deleteRoutineStates(for: item.id)
+        modelContext.delete(item)
+        try? modelContext.save()
+        dismiss()
+    }
+
+    private func deleteRoutineStates(for routineID: UUID) {
+        let descriptor = FetchDescriptor<RoutineOccurrenceState>()
+        guard let states = try? modelContext.fetch(descriptor) else {
+            return
+        }
+
+        for state in states where state.routineID == routineID {
+            modelContext.delete(state)
         }
     }
 }
