@@ -113,10 +113,16 @@ enum WidgetSnapshotStore {
 
     private static let snapshotKey = "todayWidgetSnapshot"
     private static let pendingRoutineOutcomeKey = "pendingRoutineOutcomeCommands"
+    private static let snapshotFileName = "today-widget-snapshot.json"
+    private static let pendingRoutineOutcomeFileName = "pending-routine-outcomes.json"
 
     static func load() -> WidgetSnapshot {
+        if let snapshot = read(WidgetSnapshot.self, from: snapshotFileURL) {
+            return snapshot
+        }
+
         guard
-            let data = defaults.data(forKey: snapshotKey),
+            let data = defaults?.data(forKey: snapshotKey),
             let snapshot = try? JSONDecoder().decode(WidgetSnapshot.self, from: data)
         else {
             return .empty
@@ -127,8 +133,9 @@ enum WidgetSnapshotStore {
 
     static func save(_ snapshot: WidgetSnapshot) {
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        defaults.set(data, forKey: snapshotKey)
-        defaults.synchronize()
+        write(data, to: snapshotFileURL)
+        defaults?.set(data, forKey: snapshotKey)
+        defaults?.synchronize()
     }
 
     static func updateRoutineOutcome(
@@ -168,18 +175,35 @@ enum WidgetSnapshotStore {
 
     static func consumePendingRoutineOutcomes() -> [WidgetRoutineOutcomeCommand] {
         let commands = pendingRoutineOutcomes()
-        defaults.removeObject(forKey: pendingRoutineOutcomeKey)
-        defaults.synchronize()
+        remove(pendingRoutineOutcomeFileURL)
+        defaults?.removeObject(forKey: pendingRoutineOutcomeKey)
+        defaults?.synchronize()
         return commands
     }
 
-    private static var defaults: UserDefaults {
-        UserDefaults(suiteName: appGroupIdentifier) ?? .standard
+    private static var defaults: UserDefaults? {
+        UserDefaults(suiteName: appGroupIdentifier)
+    }
+
+    private static var appGroupContainerURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+    }
+
+    private static var snapshotFileURL: URL? {
+        appGroupContainerURL?.appendingPathComponent(snapshotFileName, isDirectory: false)
+    }
+
+    private static var pendingRoutineOutcomeFileURL: URL? {
+        appGroupContainerURL?.appendingPathComponent(pendingRoutineOutcomeFileName, isDirectory: false)
     }
 
     private static func pendingRoutineOutcomes() -> [WidgetRoutineOutcomeCommand] {
+        if let commands = read([WidgetRoutineOutcomeCommand].self, from: pendingRoutineOutcomeFileURL) {
+            return commands
+        }
+
         guard
-            let data = defaults.data(forKey: pendingRoutineOutcomeKey),
+            let data = defaults?.data(forKey: pendingRoutineOutcomeKey),
             let commands = try? JSONDecoder().decode([WidgetRoutineOutcomeCommand].self, from: data)
         else {
             return []
@@ -200,7 +224,39 @@ enum WidgetSnapshotStore {
         commands.append(command)
 
         guard let data = try? JSONEncoder().encode(Array(commands.suffix(20))) else { return }
-        defaults.set(data, forKey: pendingRoutineOutcomeKey)
-        defaults.synchronize()
+        write(data, to: pendingRoutineOutcomeFileURL)
+        defaults?.set(data, forKey: pendingRoutineOutcomeKey)
+        defaults?.synchronize()
+    }
+
+    private static func read<T: Decodable>(_ type: T.Type, from url: URL?) -> T? {
+        guard
+            let url,
+            let data = try? Data(contentsOf: url)
+        else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(type, from: data)
+    }
+
+    private static func write(_ data: Data, to url: URL?) {
+        guard let url else {
+            return
+        }
+
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? data.write(to: url, options: [.atomic])
+    }
+
+    private static func remove(_ url: URL?) {
+        guard let url else {
+            return
+        }
+
+        try? FileManager.default.removeItem(at: url)
     }
 }
