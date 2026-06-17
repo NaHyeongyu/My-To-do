@@ -192,7 +192,6 @@ struct CustomRoutineLabel: Codable, Identifiable, Hashable, Sendable {
 
 struct RoutineVersion: Codable, Identifiable, Hashable, Sendable {
     static let standardID = "standard"
-    static let shortID = "short"
     static let minimumID = "minimum"
     static let deepID = "deep"
 
@@ -247,64 +246,36 @@ enum RoutineVersionStore {
 
     static func defaultVersions(for plannedMinutes: Int) -> [RoutineVersion] {
         let standardMinutes = RoutineVersion.normalizedDuration(plannedMinutes)
-        let shortMinutes = RoutineVersion.normalizedDuration(max(5, standardMinutes / 2))
-        let minimumMinutes = RoutineVersion.normalizedDuration(min(15, shortMinutes))
+        let minimumMinutes = RoutineVersion.normalizedDuration(min(15, standardMinutes))
         let deepMinutes = RoutineVersion.normalizedDuration(min(ScheduleItem.minutesPerDay, max(standardMinutes + 30, standardMinutes * 2)))
 
         let candidates = [
             RoutineVersion(id: RoutineVersion.standardID, title: "Standard", durationMinutes: standardMinutes, isDefault: true),
-            RoutineVersion(id: RoutineVersion.shortID, title: "Short", durationMinutes: shortMinutes),
             RoutineVersion(id: RoutineVersion.minimumID, title: "Minimum", durationMinutes: minimumMinutes),
             RoutineVersion(id: RoutineVersion.deepID, title: "Deep", durationMinutes: deepMinutes)
         ]
 
-        var seenDurations: Set<Int> = []
-        return candidates.filter { seenDurations.insert($0.durationMinutes).inserted }
+        return candidates
     }
 
     static func normalizedVersions(_ versions: [RoutineVersion], fallbackDuration: Int) -> [RoutineVersion] {
         let fallbackVersions = defaultVersions(for: fallbackDuration)
-        guard !versions.isEmpty else {
-            return fallbackVersions
-        }
+        let storedMinimum = versions.first { $0.id == RoutineVersion.minimumID }
+        let storedDeep = versions.first { $0.id == RoutineVersion.deepID }
 
-        var seenIDs: Set<String> = []
-        var normalized = versions.compactMap { version -> RoutineVersion? in
-            let fallbackID = "version.\(UUID().uuidString)"
-            let trimmedID = version.id.trimmingCharacters(in: .whitespacesAndNewlines)
-            let id = trimmedID.isEmpty ? fallbackID : trimmedID
-            guard seenIDs.insert(id).inserted else {
-                return nil
-            }
-
-            return RoutineVersion(
-                id: id,
-                title: version.title,
-                durationMinutes: version.durationMinutes,
-                isDefault: version.isDefault
+        return [
+            fallbackVersions[0],
+            RoutineVersion(
+                id: RoutineVersion.minimumID,
+                title: "Minimum",
+                durationMinutes: storedMinimum?.durationMinutes ?? fallbackVersions[1].durationMinutes
+            ),
+            RoutineVersion(
+                id: RoutineVersion.deepID,
+                title: "Deep",
+                durationMinutes: storedDeep?.durationMinutes ?? fallbackVersions[2].durationMinutes
             )
-        }
-
-        if normalized.isEmpty {
-            return fallbackVersions
-        }
-
-        if let standardIndex = normalized.firstIndex(where: { $0.id == RoutineVersion.standardID }) {
-            normalized[standardIndex].durationMinutes = RoutineVersion.normalizedDuration(fallbackDuration)
-            normalized[standardIndex].isDefault = true
-        } else {
-            normalized.insert(fallbackVersions[0], at: 0)
-        }
-
-        if let defaultIndex = normalized.firstIndex(where: \.isDefault) {
-            for index in normalized.indices where index != defaultIndex {
-                normalized[index].isDefault = false
-            }
-        } else {
-            normalized[0].isDefault = true
-        }
-
-        return normalized
+        ]
     }
 }
 

@@ -148,17 +148,8 @@ struct ScheduleItemEditorView: View {
             ForEach($routineVersions) { $version in
                 RoutineVersionEditorRow(
                     version: $version,
-                    baseDurationMinutes: currentRoutineDurationMinutes,
-                    canDelete: version.id != RoutineVersion.standardID && routineVersions.count > 1
-                ) {
-                    deleteRoutineVersion(id: version.id)
-                }
-            }
-
-            Button {
-                addRoutineVersion()
-            } label: {
-                Label("Add Version", systemImage: "plus")
+                    baseDurationMinutes: currentRoutineDurationMinutes
+                )
             }
         }
     }
@@ -393,25 +384,6 @@ struct ScheduleItemEditorView: View {
         RoutineVersionStore.normalizedVersions(routineVersions, fallbackDuration: max(5, fallbackDuration))
     }
 
-    private func addRoutineVersion() {
-        let title = "Version \(routineVersions.count + 1)"
-        let minutes = max(5, currentRoutineDurationMinutes)
-
-        withAnimation(.snappy(duration: 0.18)) {
-            routineVersions.append(RoutineVersion(title: title, durationMinutes: minutes))
-        }
-    }
-
-    private func deleteRoutineVersion(id: String) {
-        guard id != RoutineVersion.standardID, routineVersions.count > 1 else {
-            return
-        }
-
-        withAnimation(.snappy(duration: 0.18)) {
-            routineVersions.removeAll { $0.id == id }
-        }
-    }
-
     private func deleteRoutine() {
         guard let item, item.kind == .routine else {
             return
@@ -439,8 +411,6 @@ private struct RoutineVersionEditorRow: View {
     @Binding var version: RoutineVersion
 
     let baseDurationMinutes: Int
-    let canDelete: Bool
-    let onDelete: () -> Void
 
     private var isStandardVersion: Bool {
         version.id == RoutineVersion.standardID
@@ -453,24 +423,15 @@ private struct RoutineVersionEditorRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
-                TextField("Version", text: $version.title)
+                Text(version.title)
                     .font(.body)
-                    .submitLabel(.done)
+                    .foregroundStyle(MissionTheme.graphite)
 
                 Text(displayedDurationMinutes.readableDuration)
                     .font(.callout.weight(.semibold).monospacedDigit())
                     .foregroundStyle(MissionTheme.secondaryText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
-
-                if canDelete {
-                    Button(role: .destructive, action: onDelete) {
-                        Image(systemName: "trash")
-                            .frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("Delete version")
-                }
             }
 
             if !isStandardVersion {
