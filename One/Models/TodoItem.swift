@@ -16,6 +16,7 @@ final class ScheduleItem: Identifiable {
     var activeFrom: Date?
     var activeUntil: Date?
     var routineLabelRawValue: String?
+    var routineVersionsRawValue: String = ""
 
     init(
         id: UUID = UUID(),
@@ -31,7 +32,8 @@ final class ScheduleItem: Identifiable {
         activeFrom: Date? = nil,
         activeUntil: Date? = nil,
         routineLabel: RoutineLabel? = nil,
-        routineLabelRawValue: String? = nil
+        routineLabelRawValue: String? = nil,
+        routineVersionsRawValue: String = ""
     ) {
         self.id = id
         self.kindRawValue = kind.rawValue
@@ -46,6 +48,7 @@ final class ScheduleItem: Identifiable {
         self.activeFrom = activeFrom
         self.activeUntil = activeUntil
         self.routineLabelRawValue = kind == .routine ? (routineLabelRawValue ?? routineLabel?.rawValue) : nil
+        self.routineVersionsRawValue = kind == .routine ? routineVersionsRawValue : ""
     }
 }
 
@@ -187,6 +190,124 @@ struct CustomRoutineLabel: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+struct RoutineVersion: Codable, Identifiable, Hashable, Sendable {
+    static let standardID = "standard"
+    static let shortID = "short"
+    static let minimumID = "minimum"
+    static let deepID = "deep"
+
+    var id: String
+    var title: String
+    var durationMinutes: Int
+    var isDefault: Bool
+
+    init(
+        id: String = "version.\(UUID().uuidString)",
+        title: String,
+        durationMinutes: Int,
+        isDefault: Bool = false
+    ) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.id = id
+        self.title = trimmedTitle.isEmpty ? "Version" : trimmedTitle
+        self.durationMinutes = Self.normalizedDuration(durationMinutes)
+        self.isDefault = isDefault
+    }
+
+    static func normalizedDuration(_ minutes: Int) -> Int {
+        let clampedMinutes = min(ScheduleItem.minutesPerDay, max(5, minutes))
+        return max(5, (clampedMinutes / 5) * 5)
+    }
+}
+
+enum RoutineVersionStore {
+    static func versions(from rawValue: String) -> [RoutineVersion] {
+        guard
+            !rawValue.isEmpty,
+            let data = rawValue.data(using: .utf8),
+            let versions = try? JSONDecoder().decode([RoutineVersion].self, from: data)
+        else {
+            return []
+        }
+
+        return normalizedVersions(versions, fallbackDuration: 60)
+    }
+
+    static func storageValue(for versions: [RoutineVersion], fallbackDuration: Int) -> String {
+        let normalizedVersions = normalizedVersions(versions, fallbackDuration: fallbackDuration)
+        guard
+            let data = try? JSONEncoder().encode(normalizedVersions),
+            let rawValue = String(data: data, encoding: .utf8)
+        else {
+            return ""
+        }
+
+        return rawValue
+    }
+
+    static func defaultVersions(for plannedMinutes: Int) -> [RoutineVersion] {
+        let standardMinutes = RoutineVersion.normalizedDuration(plannedMinutes)
+        let shortMinutes = RoutineVersion.normalizedDuration(max(5, standardMinutes / 2))
+        let minimumMinutes = RoutineVersion.normalizedDuration(min(15, shortMinutes))
+        let deepMinutes = RoutineVersion.normalizedDuration(min(ScheduleItem.minutesPerDay, max(standardMinutes + 30, standardMinutes * 2)))
+
+        let candidates = [
+            RoutineVersion(id: RoutineVersion.standardID, title: "Standard", durationMinutes: standardMinutes, isDefault: true),
+            RoutineVersion(id: RoutineVersion.shortID, title: "Short", durationMinutes: shortMinutes),
+            RoutineVersion(id: RoutineVersion.minimumID, title: "Minimum", durationMinutes: minimumMinutes),
+            RoutineVersion(id: RoutineVersion.deepID, title: "Deep", durationMinutes: deepMinutes)
+        ]
+
+        var seenDurations: Set<Int> = []
+        return candidates.filter { seenDurations.insert($0.durationMinutes).inserted }
+    }
+
+    static func normalizedVersions(_ versions: [RoutineVersion], fallbackDuration: Int) -> [RoutineVersion] {
+        let fallbackVersions = defaultVersions(for: fallbackDuration)
+        guard !versions.isEmpty else {
+            return fallbackVersions
+        }
+
+        var seenIDs: Set<String> = []
+        var normalized = versions.compactMap { version -> RoutineVersion? in
+            let fallbackID = "version.\(UUID().uuidString)"
+            let trimmedID = version.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            let id = trimmedID.isEmpty ? fallbackID : trimmedID
+            guard seenIDs.insert(id).inserted else {
+                return nil
+            }
+
+            return RoutineVersion(
+                id: id,
+                title: version.title,
+                durationMinutes: version.durationMinutes,
+                isDefault: version.isDefault
+            )
+        }
+
+        if normalized.isEmpty {
+            return fallbackVersions
+        }
+
+        if let standardIndex = normalized.firstIndex(where: { $0.id == RoutineVersion.standardID }) {
+            normalized[standardIndex].durationMinutes = RoutineVersion.normalizedDuration(fallbackDuration)
+            normalized[standardIndex].isDefault = true
+        } else {
+            normalized.insert(fallbackVersions[0], at: 0)
+        }
+
+        if let defaultIndex = normalized.firstIndex(where: \.isDefault) {
+            for index in normalized.indices where index != defaultIndex {
+                normalized[index].isDefault = false
+            }
+        } else {
+            normalized[0].isDefault = true
+        }
+
+        return normalized
+    }
+}
+
 extension ScheduleItem {
     static let minutesPerDay = 24 * 60
 
@@ -204,6 +325,17 @@ extension ScheduleItem {
             return RoutineLabel(rawValue: routineLabelRawValue)
         }
         set { routineLabelRawValue = newValue?.rawValue }
+    }
+
+    var routineVersions: [RoutineVersion] {
+        get {
+            RoutineVersionStore.versions(from: routineVersionsRawValue)
+        }
+        set {
+            routineVersionsRawValue = kind == .routine
+                ? RoutineVersionStore.storageValue(for: newValue, fallbackDuration: max(5, durationMinutes()))
+                : ""
+        }
     }
 
     var isCompleted: Bool {
@@ -283,6 +415,18 @@ extension ScheduleItem {
         return "\(startText) - \(endText)\(suffix)"
     }
 
+    func timeRangeText(durationMinutes: Int, calendar: Calendar = .current) -> String {
+        guard let startTime else { return "No time set" }
+
+        let startMinute = calendar.minuteOfDay(for: startTime)
+        let endMinute = startMinute + max(1, durationMinutes)
+        let startText = startTime.formatted(.dateTime.hour().minute())
+        let endDate = calendar.date(byAdding: .minute, value: endMinute, to: calendar.startOfDay(for: startTime)) ?? startTime
+        let suffix = endMinute >= Self.minutesPerDay ? " +1d" : ""
+
+        return "\(startText) - \(endDate.formatted(.dateTime.hour().minute()))\(suffix)"
+    }
+
     static func durationMinutes(startTime: Date, endTime: Date, calendar: Calendar = .current) -> Int {
         let startMinute = calendar.minuteOfDay(for: startTime)
         let endMinute = calendar.minuteOfDay(for: endTime)
@@ -299,6 +443,25 @@ extension ScheduleItem {
         guard minutes > 0 else { return "No time set" }
 
         return minutes.readableDuration
+    }
+
+    func routineVersionOptions(calendar: Calendar = .current) -> [RoutineVersion] {
+        let plannedMinutes = max(5, durationMinutes(calendar: calendar))
+        let storedVersions = RoutineVersionStore.normalizedVersions(routineVersions, fallbackDuration: plannedMinutes)
+        return storedVersions.isEmpty ? RoutineVersionStore.defaultVersions(for: plannedMinutes) : storedVersions
+    }
+
+    func routineVersion(for versionID: String?, calendar: Calendar = .current) -> RoutineVersion? {
+        guard let versionID else {
+            return nil
+        }
+
+        return routineVersionOptions(calendar: calendar).first { $0.id == versionID }
+    }
+
+    func plannedDurationMinutes(state: RoutineOccurrenceState?, calendar: Calendar = .current) -> Int {
+        routineVersion(for: state?.routineVersionID, calendar: calendar)?.durationMinutes
+            ?? durationMinutes(calendar: calendar)
     }
 }
 

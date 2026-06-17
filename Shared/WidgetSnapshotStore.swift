@@ -83,9 +83,9 @@ enum WidgetRoutineOutcome: String, Codable, Hashable {
 
     var title: String {
         switch self {
-        case .pending: "Pending"
-        case .success: "Success"
-        case .fail: "Fail"
+        case .pending: "Open"
+        case .success: "Done"
+        case .fail: "Adjusted"
         }
     }
 
@@ -93,7 +93,7 @@ enum WidgetRoutineOutcome: String, Codable, Hashable {
         switch self {
         case .pending: "circle"
         case .success: "checkmark.circle.fill"
-        case .fail: "xmark.circle.fill"
+        case .fail: "arrow.triangle.2.circlepath.circle.fill"
         }
     }
 

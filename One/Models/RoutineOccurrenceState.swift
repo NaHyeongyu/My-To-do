@@ -8,9 +8,9 @@ enum RoutineOccurrenceStatus: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .pending: "Pending"
-        case .done: "Success"
-        case .skipped: "Fail"
+        case .pending: "Open"
+        case .done: "Done"
+        case .skipped: "Adjusted"
         }
     }
 
@@ -62,6 +62,7 @@ final class RoutineOccurrenceState: Identifiable {
     var statusRawValue: String = RoutineOccurrenceStatus.pending.rawValue
     var failReasonRawValue: String?
     var delayMinutes: Int = 0
+    var routineVersionID: String?
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
 
@@ -72,6 +73,7 @@ final class RoutineOccurrenceState: Identifiable {
         status: RoutineOccurrenceStatus = .pending,
         failReason: RoutineFailReason? = nil,
         delayMinutes: Int = 0,
+        routineVersionID: String? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now
     ) {
@@ -81,6 +83,7 @@ final class RoutineOccurrenceState: Identifiable {
         self.statusRawValue = status.rawValue
         self.failReasonRawValue = status == .skipped ? failReason?.rawValue : nil
         self.delayMinutes = delayMinutes
+        self.routineVersionID = routineVersionID
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

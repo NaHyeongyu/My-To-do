@@ -41,6 +41,7 @@ enum TimelineLayout {
         startHour: Int,
         calendar: Calendar,
         fallbackDate: Date = .now,
+        durationMinutes: ((ScheduleItem) -> Int)? = nil,
         delayMinutes: (ScheduleItem) -> Int = { _ in 0 }
     ) -> [TimelineEventLayout] {
         let rawEvents = items.compactMap { item -> RawTimelineEvent? in
@@ -49,7 +50,7 @@ enum TimelineLayout {
                 return nil
             }
 
-            let durationMinutes = item.durationMinutes(calendar: calendar)
+            let durationMinutes = durationMinutes?(item) ?? item.durationMinutes(calendar: calendar)
             let startMinute = min(max(0, delayedStartMinute), ScheduleItem.minutesPerDay - 1)
             let endMinute = min(ScheduleItem.minutesPerDay, max(startMinute + 1, delayedStartMinute + max(1, durationMinutes)))
             let top = topContentInset

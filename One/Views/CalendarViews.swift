@@ -134,9 +134,11 @@ struct CalendarDayView: View {
                         )
 
                         ForEach(eventLayouts(width: proxy.size.width)) { layout in
+                            let occurrenceState = routineStates.state(for: layout.item, on: date, calendar: calendar)
                             CalendarEventBlock(
                                 item: layout.item,
-                                occurrenceState: routineStates.state(for: layout.item, on: date, calendar: calendar),
+                                occurrenceState: occurrenceState,
+                                plannedDurationMinutes: layout.item.plannedDurationMinutes(state: occurrenceState, calendar: calendar),
                                 isCompact: layout.isCompact
                             ) {
                                 onEdit(layout.item)
@@ -180,7 +182,11 @@ struct CalendarDayView: View {
             in: width,
             startHour: startHour,
             calendar: calendar,
-            fallbackDate: date
+            fallbackDate: date,
+            durationMinutes: { routine in
+                let state = routineStates.state(for: routine, on: date, calendar: calendar)
+                return max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
+            }
         ) { routine in
             routineStates.state(for: routine, on: date, calendar: calendar)?.delayMinutes ?? 0
         }
@@ -376,15 +382,22 @@ private enum CalendarMonthLayout {
 private struct CalendarEventBlock: View {
     let item: ScheduleItem
     let occurrenceState: RoutineOccurrenceState?
+    let plannedDurationMinutes: Int
     let isCompact: Bool
     let onEdit: () -> Void
 
+    private let calendar = Calendar.current
+
     private var timeRangeText: String {
-        item.timeRangeText()
+        item.timeRangeText(durationMinutes: plannedDurationMinutes, calendar: calendar)
     }
 
     private var status: RoutineOccurrenceStatus {
         occurrenceState?.status ?? .pending
+    }
+
+    private var selectedVersion: RoutineVersion? {
+        item.routineVersion(for: occurrenceState?.routineVersionID, calendar: calendar)
     }
 
     var body: some View {
@@ -422,6 +435,14 @@ private struct CalendarEventBlock: View {
             titleRow
 
             timeText
+
+            if let selectedVersion {
+                Text(selectedVersion.title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(MissionTheme.tertiaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.64)
+            }
         }
     }
 

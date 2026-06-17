@@ -143,7 +143,7 @@ struct RoutineDayProgress {
             return "No routines"
         }
 
-        return "\(pending) open · \(done) success · \(skipped) fail"
+        return "\(pending) open · \(done) done · \(skipped) adjusted"
     }
 }
 
@@ -172,6 +172,9 @@ struct RoutineNowCandidate: Identifiable {
     let startMinute: Int
     let endMinute: Int
     let delayMinutes: Int
+    let plannedDurationMinutes: Int
+    let selectedVersion: RoutineVersion?
+    let versionOptions: [RoutineVersion]
     let calendar: Calendar
     let dayStart: Date
 
@@ -186,6 +189,24 @@ struct RoutineNowCandidate: Identifiable {
 
     var delayText: String? {
         delayMinutes > 0 ? "+\(delayMinutes)m" : nil
+    }
+
+    var versionTitle: String {
+        selectedVersion?.title
+            ?? versionOptions.first(where: \.isDefault)?.title
+            ?? "Standard"
+    }
+
+    var effectiveVersionID: String? {
+        selectedVersion?.id ?? versionOptions.first(where: \.isDefault)?.id
+    }
+
+    var versionSummaryText: String {
+        "\(versionTitle) · \(plannedDurationMinutes.readableDuration)"
+    }
+
+    var canSwitchVersion: Bool {
+        versionOptions.count > 1
     }
 
     func withPhase(_ nextPhase: RoutineNowPhase) -> RoutineNowCandidate {
@@ -207,6 +228,9 @@ struct CalendarNowModeCard: View {
     let onAddRoutine: () -> Void
     let onDone: (ScheduleItem) -> Void
     let onSkip: (ScheduleItem) -> Void
+    let onSelectVersion: (ScheduleItem, RoutineVersion) -> Void
+
+    @State private var versionMenuCandidate: RoutineNowCandidate?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -222,6 +246,41 @@ struct CalendarNowModeCard: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .missionCard()
+        .confirmationDialog(
+            "Version",
+            isPresented: versionDialogBinding,
+            titleVisibility: .visible
+        ) {
+            if let versionMenuCandidate {
+                ForEach(versionMenuCandidate.versionOptions) { version in
+                    Button {
+                        onSelectVersion(versionMenuCandidate.item, version)
+                        self.versionMenuCandidate = nil
+                    } label: {
+                        Label(
+                            "\(version.title) · \(version.durationMinutes.readableDuration)",
+                            systemImage: versionMenuCandidate.effectiveVersionID == version.id ? "checkmark" : "clock"
+                        )
+                    }
+                }
+            }
+
+            Button("Cancel", role: .cancel) {
+                versionMenuCandidate = nil
+            }
+        } message: {
+            Text(versionMenuCandidate?.item.title ?? "")
+        }
+    }
+
+    private var versionDialogBinding: Binding<Bool> {
+        Binding {
+            versionMenuCandidate != nil
+        } set: { isPresented in
+            if !isPresented {
+                versionMenuCandidate = nil
+            }
+        }
     }
 
     private var header: some View {
@@ -277,10 +336,17 @@ struct CalendarNowModeCard: View {
                     }
                 }
 
-                Text(candidate.timeText)
-                    .font(.caption.weight(.medium).monospacedDigit())
-                    .foregroundStyle(MissionTheme.secondaryText)
-                    .lineLimit(1)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 7) {
+                        timeText(candidate.timeText)
+                        versionBadge(candidate.versionSummaryText)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        timeText(candidate.timeText)
+                        versionBadge(candidate.versionSummaryText)
+                    }
+                }
 
                 if !candidate.item.notes.isEmpty {
                     Text(candidate.item.notes)
@@ -298,42 +364,90 @@ struct CalendarNowModeCard: View {
     private func actionRow(_ candidate: RoutineNowCandidate) -> some View {
         if candidate.phase == .next {
             HStack(spacing: 8) {
-                Image(systemName: "lock.fill")
-                    .font(.caption.weight(.semibold))
+                if candidate.canSwitchVersion {
+                    RoutineOutcomeButton(
+                        title: "Version",
+                        systemImage: "slider.horizontal.3",
+                        tint: MissionTheme.accent
+                    ) {
+                        versionMenuCandidate = candidate
+                    }
+                    .accessibilityLabel("Switch routine version")
+                }
 
-                Text("Available at start")
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+                lockedActionsLabel
             }
-            .foregroundStyle(MissionTheme.secondaryText)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
-            .accessibilityLabel("Routine actions available at start time")
+            .font(.caption.weight(.semibold))
+            .buttonBorderShape(.capsule)
         } else {
             HStack(spacing: 8) {
                 RoutineOutcomeButton(
-                    title: "Fail",
-                    systemImage: "xmark",
+                    title: "Adjust",
+                    systemImage: "arrow.triangle.2.circlepath",
                     tint: MissionTheme.danger
                 ) {
                     onSkip(candidate.item)
                 }
-                .accessibilityLabel("Mark routine as fail")
+                .accessibilityLabel("Adjust routine")
+
+                if candidate.canSwitchVersion {
+                    RoutineOutcomeButton(
+                        title: "Version",
+                        systemImage: "slider.horizontal.3",
+                        tint: MissionTheme.accent
+                    ) {
+                        versionMenuCandidate = candidate
+                    }
+                    .accessibilityLabel("Switch routine version")
+                }
 
                 RoutineOutcomeButton(
-                    title: "Success",
+                    title: "Done",
                     systemImage: "checkmark",
                     tint: MissionTheme.success
                 ) {
                     onDone(candidate.item)
                 }
-                .accessibilityLabel("Mark routine as success")
+                .accessibilityLabel("Mark routine as done")
             }
             .font(.caption.weight(.semibold))
             .buttonBorderShape(.capsule)
         }
+    }
+
+    private func timeText(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.medium).monospacedDigit())
+            .foregroundStyle(MissionTheme.secondaryText)
+            .lineLimit(1)
+    }
+
+    private func versionBadge(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(MissionTheme.graphite)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
+    }
+
+    private var lockedActionsLabel: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.fill")
+                .font(.caption.weight(.semibold))
+
+            Text("Available at start")
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+        }
+        .foregroundStyle(MissionTheme.secondaryText)
+        .frame(maxWidth: .infinity)
+        .frame(height: 38)
+        .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
+        .accessibilityLabel("Routine actions available at start time")
     }
 
     private var emptyContent: some View {

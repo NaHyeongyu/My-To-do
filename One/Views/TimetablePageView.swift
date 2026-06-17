@@ -1,6 +1,9 @@
+import SwiftData
 import SwiftUI
 
 struct TimetablePageView: View {
+    @Environment(\.modelContext) private var modelContext
+
     let items: [ScheduleItem]
     let routineStates: [RoutineOccurrenceState]
     let onAddRoutine: (Date) -> Void
@@ -95,10 +98,13 @@ struct TimetablePageView: View {
     }
 
     private var missionSummary: CalendarMissionSummary {
-        let plannedMinutes = routines.reduce(0) { $0 + $1.durationMinutes(calendar: calendar) }
+        let plannedMinutes = routines.reduce(0) { total, routine in
+            let state = routineStates.state(for: routine, on: selectedDate, calendar: calendar)
+            return total + routine.plannedDurationMinutes(state: state, calendar: calendar)
+        }
         let completedMinutes = routines.reduce(0) { total, routine in
             let state = routineStates.state(for: routine, on: selectedDate, calendar: calendar)
-            return state?.status == .done ? total + routine.durationMinutes(calendar: calendar) : total
+            return state?.status == .done ? total + routine.plannedDurationMinutes(state: state, calendar: calendar) : total
         }
         let openTaskCount = items
             .oneOffTasksForToday(selectedDate, calendar: calendar)
@@ -173,6 +179,9 @@ struct TimetablePageView: View {
                                 },
                                 onSkip: {
                                     onSkipRoutine($0, selectedDayStart)
+                                },
+                                onSelectVersion: { routine, version in
+                                    selectRoutineVersion(version, for: routine, on: selectedDayStart)
                                 }
                             )
                         }
@@ -368,7 +377,9 @@ struct TimetablePageView: View {
         let state = routineStates.state(for: routine, on: selectedDate, calendar: calendar)
         let delayMinutes = state?.delayMinutes ?? 0
         let baseStartMinute = calendar.minuteOfDay(for: routine.startTime ?? selectedDate)
-        let duration = max(5, routine.durationMinutes(calendar: calendar))
+        let versionOptions = routine.routineVersionOptions(calendar: calendar)
+        let selectedVersion = routine.routineVersion(for: state?.routineVersionID, calendar: calendar)
+        let duration = max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
         let startMinute = baseStartMinute + delayMinutes
         let endMinute = startMinute + duration
         let phase: RoutineNowPhase = endMinute <= currentMinute ? .missed : .next
@@ -380,9 +391,38 @@ struct TimetablePageView: View {
             startMinute: startMinute,
             endMinute: endMinute,
             delayMinutes: delayMinutes,
+            plannedDurationMinutes: duration,
+            selectedVersion: selectedVersion,
+            versionOptions: versionOptions,
             calendar: calendar,
             dayStart: selectedDayStart
         )
+    }
+
+    private func selectRoutineVersion(_ version: RoutineVersion, for routine: ScheduleItem, on date: Date) {
+        let dayStart = calendar.startOfDay(for: date)
+        let existingState = routineStates.state(for: routine, on: dayStart, calendar: calendar)
+        let state = existingState ?? RoutineOccurrenceState(routineID: routine.id, dayStart: dayStart)
+
+        if existingState == nil {
+            modelContext.insert(state)
+        }
+
+        state.routineVersionID = version.id
+        state.updatedAt = .now
+        try? modelContext.save()
+
+        WidgetSnapshotWriter.save(
+            items: items,
+            routineStates: routineStatesReplacing(state)
+        )
+    }
+
+    private func routineStatesReplacing(_ updatedState: RoutineOccurrenceState) -> [RoutineOccurrenceState] {
+        routineStates.filter { state in
+            state.routineID != updatedState.routineID
+                || !calendar.isDate(state.dayStart, inSameDayAs: updatedState.dayStart)
+        } + [updatedState]
     }
 
     private var monthGridDays: [Date?] {

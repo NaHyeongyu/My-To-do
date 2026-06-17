@@ -16,6 +16,7 @@ struct ScheduleItemEditorView: View {
     @State private var endTime: Date
     @State private var repeatWeekdayMask: Int
     @State private var routineLabelRawValue: String?
+    @State private var routineVersions: [RoutineVersion]
     @State private var showsDeleteConfirmation = false
 
     @AppStorage(AppSettingsKey.customRoutineLabels) private var customRoutineLabelsRaw = CustomRoutineLabelStore.emptyStorage
@@ -30,6 +31,13 @@ struct ScheduleItemEditorView: View {
         let calendar = Calendar.current
         let defaultStart = calendar.dateBySnappingToFiveMinute(now)
         let defaultEnd = calendar.date(byAdding: .hour, value: 1, to: defaultStart) ?? defaultStart
+        let initialStartTime = calendar.dateBySnappingToFiveMinute(item?.startTime ?? defaultStart)
+        let initialEndTime = calendar.dateBySnappingToFiveMinute(item?.endTime ?? defaultEnd)
+        let initialRoutineDuration = ScheduleItem.durationMinutes(
+            startTime: initialStartTime,
+            endTime: initialEndTime,
+            calendar: calendar
+        )
         let defaultRepeatWeekdayMask: Int
         if let initialDate, editorKind == .routine {
             defaultRepeatWeekdayMask = RepeatWeekday.current(date: initialDate).bit
@@ -40,10 +48,15 @@ struct ScheduleItemEditorView: View {
         _title = State(initialValue: item?.title ?? "")
         _notes = State(initialValue: item?.notes ?? "")
         _taskDate = State(initialValue: item?.taskDate ?? initialDate ?? now)
-        _startTime = State(initialValue: calendar.dateBySnappingToFiveMinute(item?.startTime ?? defaultStart))
-        _endTime = State(initialValue: calendar.dateBySnappingToFiveMinute(item?.endTime ?? defaultEnd))
+        _startTime = State(initialValue: initialStartTime)
+        _endTime = State(initialValue: initialEndTime)
         _repeatWeekdayMask = State(initialValue: item?.repeatWeekdayMask ?? defaultRepeatWeekdayMask)
         _routineLabelRawValue = State(initialValue: item?.routineLabelRawValue)
+        _routineVersions = State(
+            initialValue: editorKind == .routine
+                ? (item?.routineVersionOptions(calendar: calendar) ?? RoutineVersionStore.defaultVersions(for: initialRoutineDuration))
+                : []
+        )
     }
 
     var body: some View {
@@ -63,6 +76,7 @@ struct ScheduleItemEditorView: View {
                 case .routine:
                     routineLabelSection
                     routineSection
+                    routineVersionsSection
                     if !isDateAnchoredRoutine {
                         repeatSection
                     }
@@ -125,6 +139,26 @@ struct ScheduleItemEditorView: View {
                 Text("Ends next day.")
                     .font(.footnote)
                     .foregroundStyle(MissionTheme.secondaryText)
+            }
+        }
+    }
+
+    private var routineVersionsSection: some View {
+        Section("Versions") {
+            ForEach($routineVersions) { $version in
+                RoutineVersionEditorRow(
+                    version: $version,
+                    baseDurationMinutes: currentRoutineDurationMinutes,
+                    canDelete: version.id != RoutineVersion.standardID && routineVersions.count > 1
+                ) {
+                    deleteRoutineVersion(id: version.id)
+                }
+            }
+
+            Button {
+                addRoutineVersion()
+            } label: {
+                Label("Add Version", systemImage: "plus")
             }
         }
     }
@@ -199,6 +233,10 @@ struct ScheduleItemEditorView: View {
     }
 
     private var hasValidRoutineTime: Bool {
+        currentRoutineDurationMinutes > 0
+    }
+
+    private var currentRoutineDurationMinutes: Int {
         let calendar = Calendar.current
         let snappedStartTime = calendar.dateBySnappingToFiveMinute(startTime)
         let snappedEndTime = calendar.dateBySnappingToFiveMinute(endTime)
@@ -206,7 +244,7 @@ struct ScheduleItemEditorView: View {
             startTime: snappedStartTime,
             endTime: snappedEndTime,
             calendar: calendar
-        ) > 0
+        )
     }
 
     private var routineEndsNextDay: Bool {
@@ -253,6 +291,9 @@ struct ScheduleItemEditorView: View {
             ? 0
             : (repeatWeekdayMask == 0 ? RepeatWeekdayMask.everyDay : repeatWeekdayMask)
         let todayStart = calendar.startOfDay(for: .now)
+        let savedRoutineVersions = kind == .routine
+            ? normalizedRoutineVersions(fallbackDuration: currentRoutineDurationMinutes)
+            : []
 
         if let item {
             if shouldCreateRoutineVersion(for: item, todayStart: todayStart, calendar: calendar) {
@@ -269,6 +310,7 @@ struct ScheduleItemEditorView: View {
                     activeFrom: todayStart,
                     routineLabelRawValue: routineLabelRawValue
                 )
+                newItem.routineVersions = savedRoutineVersions
                 modelContext.insert(newItem)
                 moveCurrentRoutineStates(from: item.id, to: newItem.id, startingAt: todayStart)
             } else {
@@ -286,6 +328,7 @@ struct ScheduleItemEditorView: View {
                     item.activeFrom = routineDate == nil ? (item.activeFrom ?? todayStart) : nil
                     item.activeUntil = nil
                     item.routineLabelRawValue = routineLabelRawValue
+                    item.routineVersions = savedRoutineVersions
                 case .task:
                     item.taskDate = taskDate
                     item.startTime = nil
@@ -294,6 +337,7 @@ struct ScheduleItemEditorView: View {
                     item.activeFrom = nil
                     item.activeUntil = nil
                     item.routineLabelRawValue = nil
+                    item.routineVersionsRawValue = ""
                 }
             }
         } else {
@@ -308,6 +352,9 @@ struct ScheduleItemEditorView: View {
                 activeFrom: kind == .routine && routineDate == nil ? todayStart : nil,
                 routineLabelRawValue: kind == .routine ? routineLabelRawValue : nil
             )
+            if kind == .routine {
+                newItem.routineVersions = savedRoutineVersions
+            }
             modelContext.insert(newItem)
         }
 
@@ -342,6 +389,29 @@ struct ScheduleItemEditorView: View {
         }
     }
 
+    private func normalizedRoutineVersions(fallbackDuration: Int) -> [RoutineVersion] {
+        RoutineVersionStore.normalizedVersions(routineVersions, fallbackDuration: max(5, fallbackDuration))
+    }
+
+    private func addRoutineVersion() {
+        let title = "Version \(routineVersions.count + 1)"
+        let minutes = max(5, currentRoutineDurationMinutes)
+
+        withAnimation(.snappy(duration: 0.18)) {
+            routineVersions.append(RoutineVersion(title: title, durationMinutes: minutes))
+        }
+    }
+
+    private func deleteRoutineVersion(id: String) {
+        guard id != RoutineVersion.standardID, routineVersions.count > 1 else {
+            return
+        }
+
+        withAnimation(.snappy(duration: 0.18)) {
+            routineVersions.removeAll { $0.id == id }
+        }
+    }
+
     private func deleteRoutine() {
         guard let item, item.kind == .routine else {
             return
@@ -362,6 +432,60 @@ struct ScheduleItemEditorView: View {
         for state in states where state.routineID == routineID {
             modelContext.delete(state)
         }
+    }
+}
+
+private struct RoutineVersionEditorRow: View {
+    @Binding var version: RoutineVersion
+
+    let baseDurationMinutes: Int
+    let canDelete: Bool
+    let onDelete: () -> Void
+
+    private var isStandardVersion: Bool {
+        version.id == RoutineVersion.standardID
+    }
+
+    private var displayedDurationMinutes: Int {
+        isStandardVersion ? max(5, baseDurationMinutes) : version.durationMinutes
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                TextField("Version", text: $version.title)
+                    .font(.body)
+                    .submitLabel(.done)
+
+                Text(displayedDurationMinutes.readableDuration)
+                    .font(.callout.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(MissionTheme.secondaryText)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+
+                if canDelete {
+                    Button(role: .destructive, action: onDelete) {
+                        Image(systemName: "trash")
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Delete version")
+                }
+            }
+
+            if !isStandardVersion {
+                Stepper(
+                    value: $version.durationMinutes,
+                    in: 5...ScheduleItem.minutesPerDay,
+                    step: 5
+                ) {
+                    Label("Duration", systemImage: "clock")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(MissionTheme.secondaryText)
+                }
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 
