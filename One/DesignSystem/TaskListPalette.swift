@@ -1,15 +1,16 @@
 import SwiftUI
 
 enum TaskListPalette {
-    static let background = Color(uiColor: .systemGroupedBackground)
-    static let rowBackground = Color(uiColor: .secondarySystemGroupedBackground)
-    static let controlBackground = Color(uiColor: .tertiarySystemGroupedBackground)
-    static let primaryText = Color(uiColor: .label)
-    static let secondaryText = Color(uiColor: .secondaryLabel)
-    static let tertiaryText = Color(uiColor: .tertiaryLabel)
-    static let selectedText = Color(uiColor: .systemBackground)
-    static let separator = Color(uiColor: .separator)
-    static let fill = Color(uiColor: .tertiarySystemFill)
-    static let glassStroke = Color(uiColor: .separator).opacity(0.38)
-    static let focusedGlassStroke = Color(uiColor: .label).opacity(0.28)
+    static let background = MissionTheme.appBackground
+    static let panelFill = MissionTheme.panel
+    static let rowBackground = MissionTheme.elevatedPanel
+    static let controlBackground = MissionTheme.panel
+    static let primaryText = MissionTheme.graphite
+    static let secondaryText = MissionTheme.secondaryText
+    static let tertiaryText = MissionTheme.tertiaryText
+    static let selectedText = MissionTheme.selectedText
+    static let separator = MissionTheme.separator
+    static let fill = MissionTheme.controlFill
+    static let glassStroke = MissionTheme.separator.opacity(0.72)
+    static let focusedGlassStroke = MissionTheme.accent.opacity(0.78)
 }

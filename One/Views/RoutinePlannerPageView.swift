@@ -164,12 +164,16 @@ private struct RoutineDayEventBlock: View {
             .padding(.vertical, isCompact ? 5 : 7)
             .padding(.horizontal, isCompact ? 7 : 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(MissionTheme.elevatedPanel, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(MissionTheme.eventBackground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(MissionTheme.eventIndicator)
                     .frame(width: 3)
                     .padding(.vertical, 7)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(MissionTheme.accent.opacity(0.48), lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
@@ -200,7 +204,7 @@ private struct RoutineDayEventBlock: View {
     private var titleText: some View {
         Text(item.title)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(MissionTheme.graphite)
+            .foregroundStyle(MissionTheme.eventForeground)
             .lineLimit(1)
             .minimumScaleFactor(0.64)
     }
@@ -208,7 +212,7 @@ private struct RoutineDayEventBlock: View {
     private var timeText: some View {
         Text(timeRangeText)
             .font(.caption2.weight(.medium).monospacedDigit())
-            .foregroundStyle(MissionTheme.secondaryText)
+            .foregroundStyle(MissionTheme.eventSecondaryForeground)
             .lineLimit(1)
             .minimumScaleFactor(0.72)
             .allowsTightening(true)

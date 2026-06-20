@@ -88,4 +88,33 @@ extension Array where Element == ScheduleItem {
                     < calendar.minuteOfDay(for: rhs.startTime ?? .distantFuture)
             }
     }
+
+    func routines(
+        on date: Date,
+        routineStates: [RoutineOccurrenceState],
+        calendar: Calendar = .current
+    ) -> [ScheduleItem] {
+        let dayStart = calendar.startOfDay(for: date)
+        let hiddenRoutineIDs = Set(
+            routineStates
+                .filter { calendar.isDate($0.dayStart, inSameDayAs: dayStart) && $0.isHidden }
+                .map(\.routineID)
+        )
+        let routineOccurrenceOverrides = routines(on: dayStart, calendar: calendar)
+            .filter { $0.taskDate != nil }
+        let overrideSourceIDs = Set(routineOccurrenceOverrides.compactMap(\.sourceRoutineID))
+
+        return routines(on: dayStart, calendar: calendar)
+            .filter { routine in
+                if hiddenRoutineIDs.contains(routine.id) {
+                    return false
+                }
+
+                if routine.taskDate == nil, overrideSourceIDs.contains(routine.id) {
+                    return false
+                }
+
+                return true
+            }
+    }
 }

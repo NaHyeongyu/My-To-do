@@ -15,7 +15,7 @@ struct TodayTaskRowView: View {
             HStack(spacing: 10) {
                 Image(systemName: "circle")
                     .font(.body.weight(.medium))
-                    .foregroundStyle(TaskListPalette.tertiaryText)
+                    .foregroundStyle(MissionTheme.accent)
                     .symbolRenderingMode(.hierarchical)
 
                 Text(item.title)
@@ -28,10 +28,10 @@ struct TodayTaskRowView: View {
             .padding(.vertical, 11)
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TaskListPalette.glassStroke, lineWidth: 0.5)
+                    .stroke(TaskListPalette.glassStroke, lineWidth: 1)
             }
             .contentShape(Rectangle())
         }

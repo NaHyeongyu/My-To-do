@@ -66,9 +66,14 @@ struct TasksPageView: View {
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity)
             .background {
-                Rectangle()
-                    .fill(.regularMaterial)
-                    .ignoresSafeArea(edges: .bottom)
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .fill(TaskListPalette.separator.opacity(0.72))
+                        .frame(height: 1)
+
+                    TaskListPalette.panelFill
+                        .ignoresSafeArea(edges: .bottom)
+                }
             }
         }
     }
@@ -89,7 +94,7 @@ private struct CompletedPinnedButton: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.body)
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(TaskListPalette.secondaryText)
+                .foregroundStyle(MissionTheme.success)
 
             Text("Completed")
                 .font(.body.weight(.medium))
@@ -100,11 +105,11 @@ private struct CompletedPinnedButton: View {
 
             Text("\(count)")
                 .font(.caption.weight(.semibold).monospacedDigit())
-                .foregroundStyle(TaskListPalette.secondaryText)
+                .foregroundStyle(MissionTheme.selectedText)
                 .lineLimit(1)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 2)
-                .background(TaskListPalette.fill, in: Capsule())
+                .background(MissionTheme.accent, in: Capsule())
 
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
@@ -113,10 +118,10 @@ private struct CompletedPinnedButton: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TaskListPalette.glassStroke, lineWidth: 0.5)
+                .stroke(TaskListPalette.glassStroke, lineWidth: 1)
         }
     }
 }

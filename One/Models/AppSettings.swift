@@ -2,6 +2,7 @@ import SwiftUI
 
 enum AppSettingsKey {
     static let notificationsEnabled = "settings.notificationsEnabled"
+    static let notificationPreferenceReconciled = "settings.notificationPreferenceReconciled.v1"
     static let themeMode = "settings.themeMode"
     static let customRoutineLabels = "settings.customRoutineLabels"
 }
@@ -18,7 +19,26 @@ enum CustomRoutineLabelStore {
         "chart.bar.fill",
         "sparkles",
         "lock.fill",
-        "star.fill"
+        "star.fill",
+        "flag.fill",
+        "pin.fill",
+        "paperclip",
+        "folder.fill",
+        "calendar",
+        "alarm.fill",
+        "bell.fill",
+        "lightbulb.fill",
+        "house.fill",
+        "cart.fill",
+        "creditcard.fill",
+        "gift.fill",
+        "camera.fill",
+        "music.note",
+        "figure.walk",
+        "dumbbell.fill",
+        "leaf.fill",
+        "fork.knife",
+        "cup.and.saucer.fill"
     ]
 
     static func labels(defaults: UserDefaults = .standard) -> [CustomRoutineLabel] {

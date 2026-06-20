@@ -11,6 +11,7 @@ struct RoutineNotificationSchedule: Sendable {
     let repeatWeekdayMask: Int
     let activeFrom: Date?
     let activeUntil: Date?
+    let sourceRoutineID: UUID?
 
     init?(item: ScheduleItem) {
         guard item.canScheduleRoutineNotifications(), let startTime = item.startTime else {
@@ -26,6 +27,19 @@ struct RoutineNotificationSchedule: Sendable {
         self.repeatWeekdayMask = item.repeatWeekdayMask
         self.activeFrom = item.activeFrom
         self.activeUntil = item.activeUntil
+        self.sourceRoutineID = item.sourceRoutineID
+    }
+}
+
+struct RoutineNotificationOccurrenceState: Sendable {
+    let routineID: UUID
+    let dayStart: Date
+    let isHidden: Bool
+
+    init(state: RoutineOccurrenceState) {
+        self.routineID = state.routineID
+        self.dayStart = state.dayStart
+        self.isHidden = state.isHidden
     }
 }
 
@@ -44,6 +58,7 @@ actor RoutineNotificationScheduler {
     func syncNotifications(
         enabled: Bool,
         for schedules: [RoutineNotificationSchedule],
+        routineStates: [RoutineNotificationOccurrenceState] = [],
         now: Date = .now,
         calendar: Calendar = .current
     ) async {
@@ -60,7 +75,12 @@ actor RoutineNotificationScheduler {
 
         await cancelRoutineNotifications()
 
-        let requestPayloads = notificationRequestPayloads(for: schedules, now: now, calendar: calendar)
+        let requestPayloads = notificationRequestPayloads(
+            for: schedules,
+            routineStates: routineStates,
+            now: now,
+            calendar: calendar
+        )
         await withTaskGroup(of: Void.self) { group in
             for payload in requestPayloads {
                 group.addTask {
@@ -81,11 +101,23 @@ actor RoutineNotificationScheduler {
 
     private func notificationRequestPayloads(
         for schedules: [RoutineNotificationSchedule],
+        routineStates: [RoutineNotificationOccurrenceState],
         now: Date,
         calendar: Calendar
     ) -> [RoutineNotificationRequestPayload] {
-        schedules
-            .flatMap { notificationEvents(for: $0, now: now, calendar: calendar) }
+        let overrideSourceIDsByDay = overrideSourceIDsByDay(for: schedules, calendar: calendar)
+        let hiddenRoutineIDsByDay = hiddenRoutineIDsByDay(for: routineStates, calendar: calendar)
+
+        return schedules
+            .flatMap {
+                notificationEvents(
+                    for: $0,
+                    now: now,
+                    calendar: calendar,
+                    overrideSourceIDsByDay: overrideSourceIDsByDay,
+                    hiddenRoutineIDsByDay: hiddenRoutineIDsByDay
+                )
+            }
             .sorted { $0.fireDate < $1.fireDate }
             .prefix(maxScheduledNotifications)
             .map { requestPayload(for: $0, calendar: calendar) }
@@ -94,7 +126,9 @@ actor RoutineNotificationScheduler {
     private func notificationEvents(
         for schedule: RoutineNotificationSchedule,
         now: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        overrideSourceIDsByDay: [Int: Set<UUID>],
+        hiddenRoutineIDsByDay: [Int: Set<UUID>]
     ) -> [RoutineNotificationEvent] {
         if let taskDate = schedule.taskDate {
             let dayStart = calendar.startOfDay(for: taskDate)
@@ -113,13 +147,66 @@ actor RoutineNotificationScheduler {
 
             guard
                 isSchedule(schedule, activeOn: dayStart, calendar: calendar),
-                repeats(schedule, on: dayStart, calendar: calendar)
+                repeats(schedule, on: dayStart, calendar: calendar),
+                !isRepeatingScheduleSuppressed(
+                    schedule,
+                    on: dayStart,
+                    calendar: calendar,
+                    overrideSourceIDsByDay: overrideSourceIDsByDay,
+                    hiddenRoutineIDsByDay: hiddenRoutineIDsByDay
+                )
             else {
                 return []
             }
 
             return events(for: schedule, dayStart: dayStart, now: now, calendar: calendar)
         }
+    }
+
+    private func overrideSourceIDsByDay(
+        for schedules: [RoutineNotificationSchedule],
+        calendar: Calendar
+    ) -> [Int: Set<UUID>] {
+        schedules.reduce(into: [:]) { result, schedule in
+            guard let taskDate = schedule.taskDate, let sourceRoutineID = schedule.sourceRoutineID else {
+                return
+            }
+
+            result[dayKey(for: taskDate, calendar: calendar), default: []].insert(sourceRoutineID)
+        }
+    }
+
+    private func hiddenRoutineIDsByDay(
+        for states: [RoutineNotificationOccurrenceState],
+        calendar: Calendar
+    ) -> [Int: Set<UUID>] {
+        states.reduce(into: [:]) { result, state in
+            guard state.isHidden else {
+                return
+            }
+
+            result[dayKey(for: state.dayStart, calendar: calendar), default: []].insert(state.routineID)
+        }
+    }
+
+    private func isRepeatingScheduleSuppressed(
+        _ schedule: RoutineNotificationSchedule,
+        on dayStart: Date,
+        calendar: Calendar,
+        overrideSourceIDsByDay: [Int: Set<UUID>],
+        hiddenRoutineIDsByDay: [Int: Set<UUID>]
+    ) -> Bool {
+        guard schedule.taskDate == nil else {
+            return false
+        }
+
+        let dayKey = dayKey(for: dayStart, calendar: calendar)
+        return overrideSourceIDsByDay[dayKey]?.contains(schedule.routineID) == true
+            || hiddenRoutineIDsByDay[dayKey]?.contains(schedule.routineID) == true
+    }
+
+    private func dayKey(for date: Date, calendar: Calendar) -> Int {
+        Int(calendar.startOfDay(for: date).timeIntervalSince1970)
     }
 
     private func events(

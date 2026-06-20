@@ -56,7 +56,7 @@ struct CompletedTasksPageView: View {
                     CompletedTaskRowView(item: item)
                         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
                         .listRowBackground(TaskListPalette.rowBackground)
-                        .listRowSeparatorTint(TaskListPalette.separator.opacity(0.55))
+                        .listRowSeparatorTint(TaskListPalette.separator.opacity(0.78))
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 delete(item)
@@ -108,7 +108,7 @@ private struct CompletedTaskRowView: View {
         HStack(alignment: .firstTextBaseline, spacing: 9) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.subheadline)
-                .foregroundStyle(TaskListPalette.tertiaryText)
+                .foregroundStyle(MissionTheme.success)
 
             Text(item.title)
                 .font(.body.weight(.regular))

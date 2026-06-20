@@ -115,8 +115,10 @@ struct CalendarDayView: View {
     let startHour: Int
     let endHour: Int
     let onEdit: (ScheduleItem) -> Void
+    let onMove: (ScheduleItem, Int) -> Void
 
     private let calendar = Calendar.current
+    @State private var dragState: CalendarEventDragState?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -135,6 +137,9 @@ struct CalendarDayView: View {
 
                         ForEach(eventLayouts(width: proxy.size.width)) { layout in
                             let occurrenceState = routineStates.state(for: layout.item, on: date, calendar: calendar)
+                            let activeDragState = dragState?.itemID == layout.item.id ? dragState : nil
+                            let displayedStartMinute = activeDragState?.startMinute ?? layout.startMinute
+                            let isDragging = activeDragState != nil
                             CalendarEventBlock(
                                 item: layout.item,
                                 occurrenceState: occurrenceState,
@@ -149,8 +154,24 @@ struct CalendarDayView: View {
                             )
                             .offset(
                                 x: layout.x,
-                                y: layout.top
+                                y: activeDragState.map { TimelineLayout.eventTop(startMinute: $0.startMinute, startHour: startHour) } ?? layout.top
                             )
+                            .scaleEffect(isDragging ? 1.015 : 1)
+                            .shadow(color: .black.opacity(isDragging ? 0.16 : 0), radius: 12, x: 0, y: 6)
+                            .overlay(alignment: .topTrailing) {
+                                if isDragging {
+                                    CalendarEventDragBadge(
+                                        text: dragTimeRangeText(
+                                            startMinute: displayedStartMinute,
+                                            durationMinutes: layout.durationMinutes
+                                        )
+                                    )
+                                    .padding(.top, -28)
+                                    .padding(.trailing, 2)
+                                }
+                            }
+                            .zIndex(isDragging ? 10 : 0)
+                            .highPriorityGesture(eventDragGesture(for: layout))
                         }
 
                         if let currentTimeTop = currentTimeTop(for: timeline.date) {
@@ -166,6 +187,77 @@ struct CalendarDayView: View {
             .frame(height: TimelineLayout.contentHeight(startHour: startHour, endHour: endHour))
         }
         .background(MissionTheme.panel)
+    }
+
+    private func eventDragGesture(for layout: TimelineEventLayout) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.32)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .onChanged { value in
+                switch value {
+                case .first(true):
+                    updateDragState(itemID: layout.item.id, startMinute: layout.startMinute)
+                case .second(true, let drag?):
+                    updateDragState(
+                        itemID: layout.item.id,
+                        startMinute: proposedStartMinute(for: layout, translation: drag.translation.height)
+                    )
+                default:
+                    break
+                }
+            }
+            .onEnded { value in
+                let finalStartMinute: Int?
+                switch value {
+                case .second(true, let drag?):
+                    finalStartMinute = proposedStartMinute(for: layout, translation: drag.translation.height)
+                default:
+                    finalStartMinute = dragState?.itemID == layout.item.id ? dragState?.startMinute : nil
+                }
+
+                if let finalStartMinute, finalStartMinute != layout.startMinute {
+                    onMove(layout.item, finalStartMinute)
+                }
+
+                withAnimation(.snappy(duration: 0.16)) {
+                    dragState = nil
+                }
+            }
+    }
+
+    private func updateDragState(itemID: UUID, startMinute: Int) {
+        let nextState = CalendarEventDragState(itemID: itemID, startMinute: startMinute)
+        guard dragState != nextState else {
+            return
+        }
+
+        withAnimation(.snappy(duration: 0.12)) {
+            dragState = nextState
+        }
+    }
+
+    private func proposedStartMinute(for layout: TimelineEventLayout, translation: CGFloat) -> Int {
+        let rawDeltaMinutes = Int((translation / TimelineLayout.hourHeight * 60).rounded())
+        let snappedDeltaMinutes = Int((Double(rawDeltaMinutes) / 5.0).rounded()) * 5
+        let latestStartMinute = max(0, ScheduleItem.minutesPerDay - max(5, layout.durationMinutes))
+
+        return min(latestStartMinute, max(0, layout.startMinute + snappedDeltaMinutes))
+    }
+
+    private func dragTimeRangeText(startMinute: Int, durationMinutes: Int) -> String {
+        let endMinute = startMinute + max(1, durationMinutes)
+        let suffix = endMinute >= ScheduleItem.minutesPerDay ? " +1d" : ""
+        return "\(timeText(for: startMinute)) - \(timeText(for: endMinute))\(suffix)"
+    }
+
+    private func timeText(for minute: Int) -> String {
+        let normalizedMinute = ((minute % ScheduleItem.minutesPerDay) + ScheduleItem.minutesPerDay) % ScheduleItem.minutesPerDay
+        let hour = normalizedMinute / 60
+        let minute = normalizedMinute % 60
+        var components = calendar.dateComponents([.year, .month, .day], from: date)
+        components.hour = hour
+        components.minute = minute
+
+        return calendar.date(from: components)?.formatted(.dateTime.hour().minute()) ?? ""
     }
 
     private func currentTimeTop(for now: Date) -> CGFloat? {
@@ -191,6 +283,11 @@ struct CalendarDayView: View {
             routineStates.state(for: routine, on: date, calendar: calendar)?.delayMinutes ?? 0
         }
     }
+}
+
+private struct CalendarEventDragState: Equatable {
+    let itemID: UUID
+    let startMinute: Int
 }
 
 private struct CalendarCurrentTimeIndicator: View {
@@ -224,10 +321,27 @@ private struct CalendarCurrentTimeIndicator: View {
     }
 }
 
+private struct CalendarEventDragBadge: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.semibold).monospacedDigit())
+            .foregroundStyle(MissionTheme.selectedText)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(MissionTheme.selection, in: Capsule(style: .continuous))
+            .shadow(color: .black.opacity(0.14), radius: 8, x: 0, y: 4)
+    }
+}
+
 struct CalendarMonthView: View {
     let selectedDate: Date
     let monthDays: [Date?]
     let items: [ScheduleItem]
+    let routineStates: [RoutineOccurrenceState]
     let onSelectDate: (Date) -> Void
 
     private let calendar = Calendar.current
@@ -260,7 +374,7 @@ struct CalendarMonthView: View {
                     if let date {
                         CalendarMonthDayCell(
                             date: date,
-                            routines: items.routines(on: date, calendar: calendar),
+                            routines: items.routines(on: date, routineStates: routineStates, calendar: calendar),
                             isSelected: calendar.isDate(date, inSameDayAs: selectedDate),
                             isToday: calendar.isDateInToday(date)
                         ) {
@@ -413,7 +527,7 @@ private struct CalendarEventBlock: View {
             .background(eventBackground, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             .overlay(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(statusTint.opacity(status.isResolved ? 0.92 : 0.58))
+                    .fill(statusTint)
                     .frame(width: 3)
                     .padding(.vertical, 7)
             }
@@ -423,6 +537,10 @@ private struct CalendarEventBlock: View {
                         .padding(.top, 5)
                         .padding(.trailing, 6)
                 }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(eventStroke, lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         }
@@ -439,7 +557,7 @@ private struct CalendarEventBlock: View {
             if let selectedVersion {
                 Text(selectedVersion.title)
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(MissionTheme.tertiaryText)
+                    .foregroundStyle(eventSecondaryForeground)
                     .lineLimit(1)
                     .minimumScaleFactor(0.64)
             }
@@ -476,7 +594,7 @@ private struct CalendarEventBlock: View {
     private var timeText: some View {
         Text(timeRangeText)
             .font(.caption2.weight(.medium).monospacedDigit())
-            .foregroundStyle(MissionTheme.secondaryText)
+            .foregroundStyle(eventSecondaryForeground)
             .lineLimit(1)
             .minimumScaleFactor(0.64)
             .allowsTightening(true)
@@ -491,7 +609,7 @@ private struct CalendarEventBlock: View {
             .font(.caption2.weight(.semibold))
             .foregroundStyle(statusTint)
             .frame(width: 16, height: 16)
-            .background(MissionTheme.panel.opacity(0.82), in: Circle())
+            .background(MissionTheme.elevatedPanel, in: Circle())
     }
 
     private var eventBackground: Color {
@@ -499,9 +617,9 @@ private struct CalendarEventBlock: View {
         case .pending:
             MissionTheme.eventBackground
         case .done:
-            MissionTheme.success.opacity(0.18)
+            MissionTheme.successSoft
         case .skipped:
-            MissionTheme.danger.opacity(0.18)
+            MissionTheme.dangerSoft
         }
     }
 
@@ -514,10 +632,30 @@ private struct CalendarEventBlock: View {
         }
     }
 
+    private var eventSecondaryForeground: Color {
+        switch status {
+        case .pending:
+            MissionTheme.eventSecondaryForeground
+        case .done, .skipped:
+            MissionTheme.secondaryText
+        }
+    }
+
+    private var eventStroke: Color {
+        switch status {
+        case .pending:
+            MissionTheme.accent.opacity(0.48)
+        case .done:
+            MissionTheme.success.opacity(0.48)
+        case .skipped:
+            MissionTheme.danger.opacity(0.48)
+        }
+    }
+
     private var statusTint: Color {
         switch status {
         case .pending:
-            MissionTheme.secondaryText
+            MissionTheme.accent
         case .done:
             MissionTheme.success
         case .skipped:

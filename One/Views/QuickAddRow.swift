@@ -13,7 +13,7 @@ struct QuickSingleTaskRow: View {
         HStack(spacing: 10) {
             Image(systemName: "plus")
                 .font(.callout.weight(.semibold))
-                .foregroundStyle(isFocused ? TaskListPalette.primaryText : TaskListPalette.tertiaryText)
+                .foregroundStyle(isFocused ? MissionTheme.accent : TaskListPalette.secondaryText)
                 .frame(width: 18)
 
             TextField("Add a task", text: $title)
@@ -28,7 +28,7 @@ struct QuickSingleTaskRow: View {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title3)
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(trimmedTitle.isEmpty ? TaskListPalette.tertiaryText : TaskListPalette.primaryText)
+                    .foregroundStyle(trimmedTitle.isEmpty ? TaskListPalette.tertiaryText : MissionTheme.accent)
                     .frame(width: 26, height: 26)
             }
             .disabled(trimmedTitle.isEmpty)
@@ -38,10 +38,10 @@ struct QuickSingleTaskRow: View {
         .padding(.vertical, 9)
         .padding(.leading, 12)
         .padding(.trailing, 8)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isFocused ? TaskListPalette.focusedGlassStroke : TaskListPalette.glassStroke, lineWidth: 0.5)
+                .stroke(isFocused ? TaskListPalette.focusedGlassStroke : TaskListPalette.glassStroke, lineWidth: isFocused ? 1.2 : 1)
         }
     }
 

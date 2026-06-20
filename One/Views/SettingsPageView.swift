@@ -121,6 +121,13 @@ struct SettingsPageView: View {
                                 customLabelSymbolName == symbolName ? MissionTheme.selection : MissionTheme.controlFill,
                                 in: Circle()
                             )
+                            .overlay {
+                                Circle()
+                                    .stroke(
+                                        customLabelSymbolName == symbolName ? MissionTheme.selectedText.opacity(0.34) : MissionTheme.separator.opacity(0.7),
+                                        lineWidth: 1
+                                    )
+                            }
                             .buttonStyle(.plain)
                             .accessibilityAddTraits(customLabelSymbolName == symbolName ? .isSelected : [])
                         }
@@ -129,17 +136,22 @@ struct SettingsPageView: View {
                 }
 
                 if !customRoutineLabels.isEmpty {
-                    VStack(spacing: 10) {
+                    LazyVGrid(columns: customLabelGridColumns, spacing: 8) {
                         ForEach(customRoutineLabels) { label in
-                            CustomRoutineLabelRow(label: label) {
+                            CustomRoutineLabelTile(label: label) {
                                 deleteCustomLabel(label)
                             }
                         }
                     }
+                    .padding(.top, 2)
                 }
             }
             .padding(.vertical, 4)
         }
+    }
+
+    private var customLabelGridColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
     }
 
     private var customRoutineLabels: [CustomRoutineLabel] {
@@ -165,6 +177,8 @@ struct SettingsPageView: View {
     }
 
     private func setNotificationPreference(_ isEnabled: Bool) {
+        UserDefaults.standard.set(true, forKey: AppSettingsKey.notificationPreferenceReconciled)
+
         guard isEnabled else {
             notificationsEnabled = false
             Task {
@@ -192,11 +206,13 @@ struct SettingsPageView: View {
             await MainActor.run {
                 notificationStatus = settings.authorizationStatus
                 notificationsEnabled = granted && settings.authorizationStatus.allowsNotifications
+                UserDefaults.standard.set(true, forKey: AppSettingsKey.notificationPreferenceReconciled)
                 isRequestingNotifications = false
             }
         } catch {
             await MainActor.run {
                 notificationsEnabled = false
+                UserDefaults.standard.set(true, forKey: AppSettingsKey.notificationPreferenceReconciled)
                 isRequestingNotifications = false
             }
         }
@@ -245,32 +261,32 @@ struct SettingsPageView: View {
     }
 }
 
-private struct CustomRoutineLabelRow: View {
+private struct CustomRoutineLabelTile: View {
     let label: CustomRoutineLabel
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        ZStack(alignment: .topTrailing) {
             RoutineLabelBadge(
                 label: label.option,
-                fillsWidth: false,
-                fixedWidth: 140,
-                font: .caption.weight(.semibold),
-                iconSize: 12,
-                height: 30,
-                horizontalPadding: 9
+                font: .caption2.weight(.semibold),
+                iconSize: 11,
+                height: 34,
+                horizontalPadding: 7
             )
-
-            Spacer(minLength: 8)
+            .padding(.top, 4)
 
             Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
+                Image(systemName: "xmark.circle.fill")
                     .font(.caption.weight(.semibold))
-                    .frame(width: 30, height: 30)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(MissionTheme.secondaryText)
+                    .background(Color(uiColor: .systemGroupedBackground), in: Circle())
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .accessibilityLabel("Delete \(label.title)")
         }
+        .frame(minHeight: 40)
     }
 }
 

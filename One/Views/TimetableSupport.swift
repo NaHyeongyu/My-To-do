@@ -246,6 +246,7 @@ struct CalendarNowModeCard: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .missionCard()
+        .dialogBackdrop(isPresented: versionMenuCandidate != nil)
         .confirmationDialog(
             "Version",
             isPresented: versionDialogBinding,
@@ -333,6 +334,10 @@ struct CalendarNowModeCard: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
+                            .overlay {
+                                Capsule(style: .continuous)
+                                    .stroke(MissionTheme.separator.opacity(0.68), lineWidth: 1)
+                            }
                     }
                 }
 
@@ -431,6 +436,10 @@ struct CalendarNowModeCard: View {
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(MissionTheme.separator.opacity(0.68), lineWidth: 1)
+            }
     }
 
     private var lockedActionsLabel: some View {
@@ -447,6 +456,10 @@ struct CalendarNowModeCard: View {
         .frame(maxWidth: .infinity)
         .frame(height: 38)
         .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
+        .overlay {
+            Capsule(style: .continuous)
+                .stroke(MissionTheme.separator.opacity(0.68), lineWidth: 1)
+        }
         .accessibilityLabel("Routine actions available at start time")
     }
 
@@ -524,5 +537,9 @@ private struct MissionMetricPill: View {
         .padding(.vertical, 5)
         .frame(maxWidth: .infinity)
         .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
+        .overlay {
+            Capsule(style: .continuous)
+                .stroke(MissionTheme.separator.opacity(0.68), lineWidth: 1)
+        }
     }
 }

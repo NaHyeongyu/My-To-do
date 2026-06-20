@@ -10,7 +10,7 @@ enum WidgetSnapshotWriter {
     ) {
         let today = calendar.startOfDay(for: now)
         let existingSnapshot = WidgetSnapshotStore.load()
-        let routines = items.routines(on: today, calendar: calendar)
+        let routines = items.routines(on: today, routineStates: routineStates, calendar: calendar)
             .prefix(5)
             .map { item in
                 let state = routineStates.state(for: item, on: today, calendar: calendar)

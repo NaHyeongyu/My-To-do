@@ -17,6 +17,7 @@ final class ScheduleItem: Identifiable {
     var activeUntil: Date?
     var routineLabelRawValue: String?
     var routineVersionsRawValue: String = ""
+    var sourceRoutineID: UUID?
 
     init(
         id: UUID = UUID(),
@@ -33,7 +34,8 @@ final class ScheduleItem: Identifiable {
         activeUntil: Date? = nil,
         routineLabel: RoutineLabel? = nil,
         routineLabelRawValue: String? = nil,
-        routineVersionsRawValue: String = ""
+        routineVersionsRawValue: String = "",
+        sourceRoutineID: UUID? = nil
     ) {
         self.id = id
         self.kindRawValue = kind.rawValue
@@ -49,6 +51,7 @@ final class ScheduleItem: Identifiable {
         self.activeUntil = activeUntil
         self.routineLabelRawValue = kind == .routine ? (routineLabelRawValue ?? routineLabel?.rawValue) : nil
         self.routineVersionsRawValue = kind == .routine ? routineVersionsRawValue : ""
+        self.sourceRoutineID = kind == .routine ? sourceRoutineID : nil
     }
 }
 
@@ -311,6 +314,10 @@ extension ScheduleItem {
 
     var isCompleted: Bool {
         completedAt != nil
+    }
+
+    var isDateSpecificRoutine: Bool {
+        kind == .routine && taskDate != nil
     }
 
     var repeatSummary: String {

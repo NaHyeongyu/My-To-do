@@ -63,6 +63,7 @@ final class RoutineOccurrenceState: Identifiable {
     var failReasonRawValue: String?
     var delayMinutes: Int = 0
     var routineVersionID: String?
+    var isHidden: Bool = false
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
 
@@ -74,6 +75,7 @@ final class RoutineOccurrenceState: Identifiable {
         failReason: RoutineFailReason? = nil,
         delayMinutes: Int = 0,
         routineVersionID: String? = nil,
+        isHidden: Bool = false,
         createdAt: Date = .now,
         updatedAt: Date = .now
     ) {
@@ -84,6 +86,7 @@ final class RoutineOccurrenceState: Identifiable {
         self.failReasonRawValue = status == .skipped ? failReason?.rawValue : nil
         self.delayMinutes = delayMinutes
         self.routineVersionID = routineVersionID
+        self.isHidden = isHidden
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

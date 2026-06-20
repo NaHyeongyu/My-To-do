@@ -132,5 +132,12 @@ struct RoutineLabelBadge: View {
         )
         .foregroundStyle(isSelected ? selectedForeground : normalForeground)
         .background(isSelected ? selectedBackground : normalBackground, in: Capsule(style: .continuous))
+        .overlay {
+            Capsule(style: .continuous)
+                .stroke(
+                    isSelected ? selectedForeground.opacity(0.34) : MissionTheme.separator.opacity(0.72),
+                    lineWidth: isSelected ? 1.2 : 1
+                )
+        }
     }
 }

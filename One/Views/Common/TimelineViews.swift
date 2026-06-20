@@ -22,7 +22,11 @@ enum TimelineLayout {
         fallbackDate: Date = .now
     ) -> CGFloat {
         let startMinute = calendar.minuteOfDay(for: item.startTime ?? fallbackDate)
-        return CGFloat(max(0, startMinute - startHour * 60)) / 60 * hourHeight + 3
+        return eventTop(startMinute: startMinute, startHour: startHour)
+    }
+
+    static func eventTop(startMinute: Int, startHour: Int) -> CGFloat {
+        topContentInset + CGFloat(max(0, startMinute - startHour * 60)) / 60 * hourHeight + 3
     }
 
     static func eventHeight(for item: ScheduleItem, calendar: Calendar) -> CGFloat {
@@ -53,9 +57,7 @@ enum TimelineLayout {
             let durationMinutes = durationMinutes?(item) ?? item.durationMinutes(calendar: calendar)
             let startMinute = min(max(0, delayedStartMinute), ScheduleItem.minutesPerDay - 1)
             let endMinute = min(ScheduleItem.minutesPerDay, max(startMinute + 1, delayedStartMinute + max(1, durationMinutes)))
-            let top = topContentInset
-                + CGFloat(max(0, startMinute - startHour * 60)) / 60 * hourHeight
-                + 3
+            let top = eventTop(startMinute: startMinute, startHour: startHour)
             let height = eventHeight(startMinute: startMinute, durationMinutes: endMinute - startMinute)
             return RawTimelineEvent(
                 item: item,
@@ -136,6 +138,8 @@ enum TimelineLayout {
             let x = eventLeadingInset + CGFloat(assignment.column) * (columnWidth + eventColumnSpacing)
             return TimelineEventLayout(
                 item: assignment.event.item,
+                startMinute: assignment.event.startMinute,
+                endMinute: assignment.event.endMinute,
                 top: assignment.event.top,
                 width: columnWidth,
                 height: assignment.event.height,
@@ -159,6 +163,8 @@ enum TimelineLayout {
 
 struct TimelineEventLayout: Identifiable {
     let item: ScheduleItem
+    let startMinute: Int
+    let endMinute: Int
     let top: CGFloat
     let width: CGFloat
     let height: CGFloat
@@ -170,6 +176,10 @@ struct TimelineEventLayout: Identifiable {
 
     var isCompact: Bool {
         height < 62 || width < 136
+    }
+
+    var durationMinutes: Int {
+        max(1, endMinute - startMinute)
     }
 }
 

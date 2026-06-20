@@ -7,7 +7,8 @@ struct TimetablePageView: View {
     let items: [ScheduleItem]
     let routineStates: [RoutineOccurrenceState]
     let onAddRoutine: (Date) -> Void
-    let onEdit: (ScheduleItem) -> Void
+    let onEdit: (ScheduleItem, Date) -> Void
+    let onMoveRoutine: (ScheduleItem, Date, Int) -> Void
     let onMarkRoutineDone: (ScheduleItem, Date) -> Void
     let onSkipRoutine: (ScheduleItem, Date) -> Void
 
@@ -18,7 +19,7 @@ struct TimetablePageView: View {
     private let calendar = Calendar.current
 
     private var routines: [ScheduleItem] {
-        items.routines(on: selectedDate, calendar: calendar)
+        items.routines(on: selectedDate, routineStates: routineStates, calendar: calendar)
     }
 
     private var calendarItems: [ScheduleItem] {
@@ -198,7 +199,12 @@ struct TimetablePageView: View {
                             routineStates: routineStates,
                             startHour: dayStartHour,
                             endHour: dayEndHour,
-                            onEdit: onEdit
+                            onEdit: { routine in
+                                onEdit(routine, selectedDayStart)
+                            },
+                            onMove: { routine, startMinute in
+                                onMoveRoutine(routine, selectedDayStart, startMinute)
+                            }
                         )
                         .calendarPageTurn(for: selectedDayStart, direction: calendarTurnDirection)
                         .padding(.bottom, scrollContentBottomPadding)
@@ -216,6 +222,7 @@ struct TimetablePageView: View {
                             selectedDate: selectedDate,
                             monthDays: monthGridDays,
                             items: calendarItems,
+                            routineStates: routineStates,
                             onSelectDate: {
                                 setSelectedDate($0)
                                 setViewMode(.day)
