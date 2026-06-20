@@ -2,10 +2,6 @@ import SwiftData
 import SwiftUI
 import UserNotifications
 
-#if canImport(UIKit)
-import UIKit
-#endif
-
 struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
@@ -110,80 +106,26 @@ struct RootView: View {
     }
 
     private var widgetSnapshotSignature: String {
-        let itemSignature = items.map(widgetSnapshotItemSignature).joined(separator: ";")
-        let stateSignature = routineStates.map(widgetSnapshotStateSignature).joined(separator: ";")
-
-        return "\(itemSignature)#\(stateSignature)"
-    }
-
-    private func widgetSnapshotItemSignature(for item: ScheduleItem) -> String {
-        [
-            item.id.uuidString,
-            item.kindRawValue,
-            item.title,
-            item.createdAt.timeIntervalSince1970.description,
-            item.taskDate?.timeIntervalSince1970.description ?? "",
-            item.completedAt?.timeIntervalSince1970.description ?? "",
-            item.startTime?.timeIntervalSince1970.description ?? "",
-            item.endTime?.timeIntervalSince1970.description ?? "",
-            item.repeatWeekdayMask.description,
-            item.activeFrom?.timeIntervalSince1970.description ?? "",
-            item.activeUntil?.timeIntervalSince1970.description ?? "",
-            item.routineLabelRawValue ?? "",
-            item.routineVersionsRawValue,
-            item.sourceRoutineID?.uuidString ?? ""
-        ].joined(separator: "|")
-    }
-
-    private func widgetSnapshotStateSignature(for state: RoutineOccurrenceState) -> String {
-        [
-            state.routineID.uuidString,
-            state.dayStart.timeIntervalSince1970.description,
-            state.statusRawValue,
-            state.failReasonRawValue ?? "",
-            state.delayMinutes.description,
-            state.routineVersionID ?? "",
-            state.isHidden.description
-        ].joined(separator: "|")
+        AppDataSyncService.widgetSnapshotSignature(items: items, routineStates: routineStates)
     }
 
     private var routineNotificationSignature: String {
-        let itemSignatures = items
-            .filter { $0.kind == .routine }
-            .map { item in
-                [
-                    item.id.uuidString,
-                    item.title,
-                    item.notes,
-                    item.taskDate?.timeIntervalSince1970.description ?? "",
-                    item.startTime?.timeIntervalSince1970.description ?? "",
-                    item.endTime?.timeIntervalSince1970.description ?? "",
-                    item.repeatWeekdayMask.description,
-                    item.activeFrom?.timeIntervalSince1970.description ?? "",
-                    item.activeUntil?.timeIntervalSince1970.description ?? "",
-                    item.sourceRoutineID?.uuidString ?? ""
-                ].joined(separator: "|")
-            }
-        let stateSignatures = routineStates.map { state in
-                [
-                    state.routineID.uuidString,
-                    state.dayStart.timeIntervalSince1970.description,
-                    state.isHidden.description
-                ].joined(separator: "|")
-            }
-
-        return (itemSignatures + stateSignatures).joined(separator: ";")
+        AppDataSyncService.routineNotificationSignature(items: items, routineStates: routineStates)
     }
 
     private func saveAndUpdateWidgetSnapshot(
         deferred: Bool = false,
         syncNotifications shouldSyncNotifications: Bool = true
     ) {
-        try? modelContext.save()
-        updateWidgetSnapshot(deferred: deferred)
-        if shouldSyncNotifications {
-            syncRoutineNotifications()
-        }
+        AppDataSyncService.saveAndSync(
+            modelContext: modelContext,
+            queryItems: items,
+            queryRoutineStates: routineStates,
+            notificationsEnabled: notificationsEnabled,
+            scenePhase: scenePhase,
+            deferredWidget: deferred,
+            syncNotifications: shouldSyncNotifications
+        )
     }
 
     private func checkNotificationPermissionOnLaunch() {
@@ -225,46 +167,25 @@ struct RootView: View {
     }
 
     private func syncRoutineNotifications() {
-        let schedules = items.compactMap(RoutineNotificationSchedule.init(item:))
-        let notificationStates = routineStates.map(RoutineNotificationOccurrenceState.init(state:))
-        #if canImport(UIKit)
-        let backgroundTaskID = scenePhase == .background
-            ? UIApplication.shared.beginBackgroundTask(withName: "SyncRoutineNotifications", expirationHandler: nil)
-            : UIBackgroundTaskIdentifier.invalid
-        #endif
-
-        Task {
-            await RoutineNotificationScheduler.shared.syncNotifications(
-                enabled: notificationsEnabled,
-                for: schedules,
-                routineStates: notificationStates
-            )
-            #if canImport(UIKit)
-            await MainActor.run {
-                if backgroundTaskID != .invalid {
-                    UIApplication.shared.endBackgroundTask(backgroundTaskID)
-                }
-            }
-            #endif
-        }
+        AppDataSyncService.syncRoutineNotifications(
+            enabled: notificationsEnabled,
+            items: items,
+            routineStates: routineStates,
+            scenePhase: scenePhase
+        )
     }
 
     private func updateWidgetSnapshot(
         replacing updatedState: RoutineOccurrenceState? = nil,
         deferred: Bool = false
     ) {
-        let writeSnapshot = {
-            let states = routineStatesForWidget(replacing: updatedState)
-            WidgetSnapshotWriter.save(items: itemsForWidgetSnapshot(), routineStates: states)
-        }
-
-        if deferred {
-            DispatchQueue.main.async {
-                writeSnapshot()
-            }
-        } else {
-            writeSnapshot()
-        }
+        AppDataSyncService.updateWidgetSnapshot(
+            modelContext: modelContext,
+            queryItems: items,
+            queryRoutineStates: routineStates,
+            replacing: updatedState,
+            deferred: deferred
+        )
     }
 
     @discardableResult
@@ -399,27 +320,12 @@ struct RootView: View {
         }
     }
 
-    private func routineStatesForWidget(replacing updatedState: RoutineOccurrenceState?) -> [RoutineOccurrenceState] {
-        let states = fetchedRoutineStates()
-
-        guard let updatedState else {
-            return states
-        }
-
-        return states.filter { state in
-            state.routineID != updatedState.routineID
-                || !Calendar.current.isDate(state.dayStart, inSameDayAs: updatedState.dayStart)
-        } + [updatedState]
-    }
-
     private func itemsForWidgetSnapshot() -> [ScheduleItem] {
-        let descriptor = FetchDescriptor<ScheduleItem>()
-        return (try? modelContext.fetch(descriptor)) ?? items
+        AppDataSyncService.fetchedItems(modelContext: modelContext, fallback: items)
     }
 
     private func fetchedRoutineStates() -> [RoutineOccurrenceState] {
-        let descriptor = FetchDescriptor<RoutineOccurrenceState>()
-        return (try? modelContext.fetch(descriptor)) ?? routineStates
+        AppDataSyncService.fetchedRoutineStates(modelContext: modelContext, fallback: routineStates)
     }
 
     private func applyPendingWidgetRoutineOutcomes() {
@@ -589,6 +495,7 @@ struct RootView: View {
         case .tasks:
             TasksPageView(
                 items: items,
+                onEdit: { editorMode = .edit($0) },
                 onItemsChanged: {
                     saveAndUpdateWidgetSnapshot()
                 }

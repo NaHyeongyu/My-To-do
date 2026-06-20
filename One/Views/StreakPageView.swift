@@ -508,7 +508,6 @@ private struct StreakStats {
         let todayStart = calendar.startOfDay(for: now)
         let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart) ?? now
         let analysisEnd = min(period.end, tomorrowStart)
-        let routineItems = items.filter { $0.kind == .routine }
         let displayDates = Self.dates(from: period.start, to: period.end, calendar: calendar)
         let includedDates = Self.dates(from: period.start, to: analysisEnd, calendar: calendar)
         let labelTargetDates = period.mode == .week
@@ -521,6 +520,7 @@ private struct StreakStats {
         let customRoutineLabels = routineLabelOptions
             .filter(\.isCustom)
             .map { CustomRoutineLabel(id: $0.rawValue, title: $0.title, symbolName: $0.symbolName) }
+        let stateLookup = RoutineOccurrenceStateLookup(states: routineStates, calendar: calendar)
 
         for date in displayDates {
             guard date < analysisEnd else {
@@ -528,36 +528,15 @@ private struct StreakStats {
                 continue
             }
 
-            let routines = routineItems
-                .filter { Self.isRoutine($0, scheduledOn: date, calendar: calendar) }
-                .sorted {
-                    calendar.minuteOfDay(for: $0.startTime ?? .distantFuture)
-                        < calendar.minuteOfDay(for: $1.startTime ?? .distantFuture)
-                }
-
+            let routines = items.routines(on: date, routineStates: routineStates, calendar: calendar)
             let occurrences = routines.map { routine in
-                let state = routineStates.state(for: routine, on: date, calendar: calendar)
-                let status = state?.status ?? .pending
-                let effectiveStatus: StreakOccurrenceStatus
-
-                switch status {
-                case .done:
-                    effectiveStatus = .done
-                case .skipped:
-                    effectiveStatus = .skipped
-                case .pending:
-                    effectiveStatus = date < todayStart ? .missed : .open
-                }
-
-                return StreakRoutineOccurrence(
-                    id: "\(routine.id.uuidString)-\(date.timeIntervalSince1970)",
-                    routineID: routine.id,
-                    title: routine.title,
-                    label: RoutineLabelOption.option(for: routine.routineLabelRawValue, customLabels: customRoutineLabels),
-                    date: date,
-                    status: effectiveStatus,
-                    failReason: state?.failReason,
-                    minutes: routine.durationMinutes(calendar: calendar)
+                Self.occurrence(
+                    for: routine,
+                    on: date,
+                    todayStart: todayStart,
+                    customRoutineLabels: customRoutineLabels,
+                    stateLookup: stateLookup,
+                    calendar: calendar
                 )
             }
 
@@ -566,36 +545,16 @@ private struct StreakStats {
         }
 
         for date in labelTargetDates {
-            let routines = routineItems
-                .filter { $0.taskDate == nil && Self.isRoutine($0, scheduledOn: date, calendar: calendar) }
-                .sorted {
-                    calendar.minuteOfDay(for: $0.startTime ?? .distantFuture)
-                        < calendar.minuteOfDay(for: $1.startTime ?? .distantFuture)
-                }
-
+            let routines = items.routines(on: date, routineStates: routineStates, calendar: calendar)
             let occurrences = routines.map { routine in
-                let state = routineStates.state(for: routine, on: date, calendar: calendar)
-                let status = state?.status ?? .pending
-                let effectiveStatus: StreakOccurrenceStatus
-
-                switch status {
-                case .done:
-                    effectiveStatus = .done
-                case .skipped:
-                    effectiveStatus = .skipped
-                case .pending:
-                    effectiveStatus = date < todayStart ? .missed : .open
-                }
-
-                return StreakRoutineOccurrence(
-                    id: "label-\(routine.id.uuidString)-\(date.timeIntervalSince1970)",
-                    routineID: routine.id,
-                    title: routine.title,
-                    label: RoutineLabelOption.option(for: routine.routineLabelRawValue, customLabels: customRoutineLabels),
-                    date: date,
-                    status: effectiveStatus,
-                    failReason: state?.failReason,
-                    minutes: routine.durationMinutes(calendar: calendar)
+                Self.occurrence(
+                    for: routine,
+                    on: date,
+                    todayStart: todayStart,
+                    customRoutineLabels: customRoutineLabels,
+                    stateLookup: stateLookup,
+                    calendar: calendar,
+                    idPrefix: "label"
                 )
             }
 
@@ -877,16 +836,42 @@ private struct StreakStats {
         return dates
     }
 
-    private static func isRoutine(_ routine: ScheduleItem, scheduledOn date: Date, calendar: Calendar) -> Bool {
-        guard routine.isRoutineActive(on: date, calendar: calendar) else {
-            return false
+    private static func occurrence(
+        for routine: ScheduleItem,
+        on date: Date,
+        todayStart: Date,
+        customRoutineLabels: [CustomRoutineLabel],
+        stateLookup: RoutineOccurrenceStateLookup,
+        calendar: Calendar,
+        idPrefix: String? = nil
+    ) -> StreakRoutineOccurrence {
+        let state = stateLookup.state(for: routine, on: date)
+        let effectiveStatus: StreakOccurrenceStatus
+        switch state?.status ?? .pending {
+        case .done:
+            effectiveStatus = .done
+        case .skipped:
+            effectiveStatus = .skipped
+        case .pending:
+            effectiveStatus = date < todayStart ? .missed : .open
         }
 
-        if let taskDate = routine.taskDate {
-            return calendar.isDate(taskDate, inSameDayAs: date)
-        }
+        let idComponents = [
+            idPrefix,
+            routine.id.uuidString,
+            date.timeIntervalSince1970.description
+        ].compactMap(\.self)
 
-        return routine.repeats(on: date, calendar: calendar)
+        return StreakRoutineOccurrence(
+            id: idComponents.joined(separator: "-"),
+            routineID: routine.id,
+            title: routine.title,
+            label: RoutineLabelOption.option(for: routine.routineLabelRawValue, customLabels: customRoutineLabels),
+            date: date,
+            status: effectiveStatus,
+            failReason: state?.failReason,
+            minutes: max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
+        )
     }
 
     private static func failReasonSummaries(from occurrences: [StreakRoutineOccurrence]) -> [RoutineFailReasonSummary] {
@@ -965,6 +950,31 @@ private struct StreakDaySummary: Identifiable {
     var timeText: String {
         if plannedMinutes == 0 { return "0m" }
         return "\(doneMinutes.readableDuration) / \(plannedMinutes.readableDuration)"
+    }
+}
+
+private struct RoutineOccurrenceStateLookup {
+    private let statesByRoutineAndDay: [String: RoutineOccurrenceState]
+    private let calendar: Calendar
+
+    init(states: [RoutineOccurrenceState], calendar: Calendar) {
+        self.calendar = calendar
+        self.statesByRoutineAndDay = Dictionary(
+            states.map { (Self.key(routineID: $0.routineID, dayStart: $0.dayStart, calendar: calendar), $0) },
+            uniquingKeysWith: { lhs, rhs in
+                lhs.updatedAt >= rhs.updatedAt ? lhs : rhs
+            }
+        )
+    }
+
+    func state(for routine: ScheduleItem, on date: Date) -> RoutineOccurrenceState? {
+        statesByRoutineAndDay[
+            Self.key(routineID: routine.id, dayStart: date, calendar: calendar)
+        ]
+    }
+
+    private static func key(routineID: UUID, dayStart: Date, calendar: Calendar) -> String {
+        "\(routineID.uuidString)-\(Int(calendar.startOfDay(for: dayStart).timeIntervalSince1970))"
     }
 }
 
@@ -1230,7 +1240,7 @@ private struct StreakRoutineLabelTimeRow: View {
         case RoutineLabel.life.rawValue:
             TaskListPalette.primaryText
         case RoutineLabel.play.rawValue:
-            TaskListPalette.tertiaryText
+            TaskListPalette.secondaryText
         case RoutineLabel.hobby.rawValue:
             MissionTheme.secondaryText
         case RoutineLabel.rest.rawValue:
@@ -1257,7 +1267,7 @@ private struct StreakRoutineLabelTimeRow: View {
         case .behind:
             MissionTheme.danger
         case .idle:
-            TaskListPalette.tertiaryText
+            TaskListPalette.secondaryText
         }
     }
 
@@ -1293,7 +1303,7 @@ private struct StreakRoutineLabelTimeRow: View {
                         .fill(TaskListPalette.fill)
 
                     Capsule(style: .continuous)
-                        .fill(MissionTheme.danger.opacity(0.22))
+                        .fill(MissionTheme.danger.opacity(0.28))
                         .frame(width: width * summary.failureFraction)
 
                     Capsule(style: .continuous)
@@ -1472,6 +1482,10 @@ private struct StreakSignalWeekCell: View {
             ZStack {
                 Circle()
                     .fill(StreakSignalColor.fill(for: day))
+                    .overlay {
+                        Circle()
+                            .stroke(StreakSignalColor.stroke(for: day), lineWidth: 0.75)
+                    }
 
                 Text("\(Calendar.current.component(.day, from: day.date))")
                     .font(.caption.weight(.semibold).monospacedDigit())
@@ -1506,6 +1520,10 @@ private struct StreakSignalMonthCell: View {
 
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(StreakSignalColor.fill(for: day))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .stroke(StreakSignalColor.stroke(for: day), lineWidth: 0.5)
+                        }
                         .frame(height: 12)
                 }
                 .frame(height: 34)
@@ -1526,6 +1544,10 @@ private struct StreakSignalYearCell: View {
             if let day {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(StreakSignalColor.fill(for: day))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .stroke(StreakSignalColor.stroke(for: day), lineWidth: 0.5)
+                    }
                     .frame(width: 14, height: 14)
                     .accessibilityLabel("\(day.date.formatted(.dateTime.month().day())), \(day.statusText), \(day.timeText)")
             } else {
@@ -1558,7 +1580,27 @@ private enum StreakSignalColor {
     }
 
     static func foreground(for day: StreakDaySummary) -> Color {
-        day.isSuccessDay ? MissionTheme.selectedText : TaskListPalette.secondaryText
+        day.isSuccessDay ? MissionTheme.selectedText : TaskListPalette.primaryText
+    }
+
+    static func stroke(for day: StreakDaySummary) -> Color {
+        if day.scheduled == 0 {
+            return TaskListPalette.separator.opacity(0.34)
+        }
+
+        if day.hasException {
+            return MissionTheme.danger.opacity(0.34)
+        }
+
+        if day.open > 0 {
+            return MissionTheme.info.opacity(0.34)
+        }
+
+        if day.isSuccessDay {
+            return MissionTheme.success.opacity(0.44)
+        }
+
+        return TaskListPalette.separator.opacity(0.38)
     }
 }
 
@@ -1576,6 +1618,10 @@ private struct StreakSignalLegend: View {
         HStack(spacing: 5) {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(color)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .stroke(TaskListPalette.separator.opacity(0.36), lineWidth: 0.5)
+                }
                 .frame(width: 9, height: 9)
 
             Text(title)
