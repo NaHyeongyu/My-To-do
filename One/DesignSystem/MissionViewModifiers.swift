@@ -11,8 +11,75 @@ struct MissionCardModifier: ViewModifier {
             .background(MissionTheme.elevatedPanel, in: RoundedRectangle(cornerRadius: MissionTheme.radius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: MissionTheme.radius, style: .continuous)
-                    .stroke(MissionTheme.separator.opacity(0.72), lineWidth: 1)
+                    .stroke(MissionTheme.separator.opacity(0.42), lineWidth: 0.5)
             }
+    }
+}
+
+struct MissionTimelineLiquidBandModifier: ViewModifier {
+    private var shape: Rectangle {
+        Rectangle()
+    }
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .background {
+                    MissionTheme.panel
+                        .opacity(0.72)
+                }
+                .glassEffect(.regular.tint(MissionTheme.panel.opacity(0.42)), in: shape)
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(.white.opacity(0.22))
+                        .frame(height: 0.7)
+                        .blendMode(.plusLighter)
+                }
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(MissionTheme.separator.opacity(0.34))
+                        .frame(height: 0.5)
+                }
+        } else {
+            content
+                .background(.ultraThinMaterial)
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(.white.opacity(0.20))
+                        .frame(height: 0.7)
+                }
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(MissionTheme.separator.opacity(0.34))
+                        .frame(height: 0.5)
+                }
+        }
+    }
+}
+
+struct MissionLiquidCardModifier: ViewModifier {
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: MissionTheme.radius, style: .continuous)
+    }
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .background(MissionTheme.elevatedPanel, in: shape)
+                .overlay {
+                    shape
+                        .stroke(MissionTheme.separator.opacity(0.52), lineWidth: 0.75)
+                }
+        } else {
+            content
+                .background(MissionTheme.elevatedPanel, in: shape)
+                .overlay {
+                    shape
+                        .stroke(MissionTheme.separator.opacity(0.52), lineWidth: 0.75)
+                }
+        }
     }
 }
 
@@ -67,6 +134,14 @@ struct DialogBackdropModifier: ViewModifier {
 extension View {
     func missionCard() -> some View {
         modifier(MissionCardModifier())
+    }
+
+    func missionLiquidCard() -> some View {
+        modifier(MissionLiquidCardModifier())
+    }
+
+    func missionTimelineLiquidBand() -> some View {
+        modifier(MissionTimelineLiquidBandModifier())
     }
 
     func missionLiquidButton(_ variant: MissionButtonVariant = .regular) -> some View {

@@ -199,23 +199,22 @@ struct ScheduleItemEditorView: View {
     }
 
     private var repeatSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Repeat Days")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(MissionTheme.secondaryText)
-                .textCase(.uppercase)
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                WeekdaySelectionRow(mask: $repeatWeekdayMask)
 
-            WeekdaySelectionRow(mask: $repeatWeekdayMask)
-
-            if repeatWeekdayMask == 0 {
-                Text("Select at least one repeat day.")
-                    .font(.footnote)
-                    .foregroundStyle(MissionTheme.danger)
+                if repeatWeekdayMask == 0 {
+                    Text("Select at least one repeat day.")
+                        .font(.footnote)
+                        .foregroundStyle(MissionTheme.danger)
+                }
             }
+            .padding(.vertical, 4)
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 6, trailing: 16))
+            .listRowBackground(Color.clear)
+        } header: {
+            Text("Repeat Days")
         }
-        .padding(.vertical, 8)
-        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 6, trailing: 16))
-        .listRowBackground(Color.clear)
     }
 
     private var taskSection: some View {
@@ -225,25 +224,22 @@ struct ScheduleItemEditorView: View {
     }
 
     private var deleteRoutineSection: some View {
-        Section {
-            Button(role: .destructive) {
-                showsDeleteConfirmation = true
-            } label: {
-                Label {
-                    Text(deleteTriggerTitle)
-                        .font(.body.weight(.semibold))
-                } icon: {
-                    Image(systemName: "trash.fill")
-                        .font(.body.weight(.semibold))
-                        .symbolRenderingMode(.hierarchical)
-                }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
+        Button(role: .destructive) {
+            showsDeleteConfirmation = true
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "trash")
+                    .font(.footnote.weight(.semibold))
+
+                Text(deleteTriggerTitle)
             }
-            .tint(MissionTheme.danger)
-            .controlSize(.large)
-            .missionLiquidButton()
-            .accessibilityLabel(deleteTriggerTitle)
+            .foregroundStyle(MissionTheme.danger)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
+            .contentShape(Rectangle())
         }
+        .tint(MissionTheme.danger)
+        .buttonStyle(.plain)
+        .accessibilityLabel(deleteTriggerTitle)
         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 10, trailing: 16))
         .listRowBackground(Color.clear)
     }

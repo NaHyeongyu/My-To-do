@@ -31,7 +31,7 @@ struct TodayTaskRowView: View {
             .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TaskListPalette.glassStroke, lineWidth: 1)
+                    .stroke(TaskListPalette.glassStroke, lineWidth: 0.5)
             }
             .contentShape(Rectangle())
         }

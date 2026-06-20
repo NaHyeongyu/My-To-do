@@ -11,6 +11,6 @@ enum TaskListPalette {
     static let selectedText = MissionTheme.selectedText
     static let separator = MissionTheme.separator
     static let fill = MissionTheme.controlFill
-    static let glassStroke = MissionTheme.separator.opacity(0.72)
-    static let focusedGlassStroke = MissionTheme.accent.opacity(0.78)
+    static let glassStroke = MissionTheme.separator.opacity(0.38)
+    static let focusedGlassStroke = MissionTheme.accent.opacity(0.34)
 }

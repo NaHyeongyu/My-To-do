@@ -171,10 +171,6 @@ private struct RoutineDayEventBlock: View {
                     .frame(width: 3)
                     .padding(.vertical, 7)
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(MissionTheme.accent.opacity(0.48), lineWidth: 1)
-            }
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)

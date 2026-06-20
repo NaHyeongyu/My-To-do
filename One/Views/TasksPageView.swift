@@ -65,16 +65,6 @@ struct TasksPageView: View {
             .padding(.top, 6)
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity)
-            .background {
-                VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(TaskListPalette.separator.opacity(0.72))
-                        .frame(height: 1)
-
-                    TaskListPalette.panelFill
-                        .ignoresSafeArea(edges: .bottom)
-                }
-            }
         }
     }
 
@@ -121,7 +111,7 @@ private struct CompletedPinnedButton: View {
         .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TaskListPalette.glassStroke, lineWidth: 1)
+                .stroke(TaskListPalette.glassStroke, lineWidth: 0.5)
         }
     }
 }

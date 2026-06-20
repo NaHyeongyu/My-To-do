@@ -55,13 +55,6 @@ private struct WeekdaySelectionButton: View {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(isSelected ? MissionTheme.selection : MissionTheme.controlFill)
                 }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(
-                            isSelected ? MissionTheme.selectedText.opacity(0.32) : MissionTheme.separator.opacity(0.7),
-                            lineWidth: 1
-                        )
-                }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(weekday.title)

@@ -121,13 +121,6 @@ struct SettingsPageView: View {
                                 customLabelSymbolName == symbolName ? MissionTheme.selection : MissionTheme.controlFill,
                                 in: Circle()
                             )
-                            .overlay {
-                                Circle()
-                                    .stroke(
-                                        customLabelSymbolName == symbolName ? MissionTheme.selectedText.opacity(0.34) : MissionTheme.separator.opacity(0.7),
-                                        lineWidth: 1
-                                    )
-                            }
                             .buttonStyle(.plain)
                             .accessibilityAddTraits(customLabelSymbolName == symbolName ? .isSelected : [])
                         }

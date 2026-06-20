@@ -34,16 +34,15 @@ struct StreakPageView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 controlHeader
-                timeControlCard
-                metricGrid
+                streakHeroCard
                 StreakSignalMap(days: stats.days, mode: mode)
-                timeCard
                 if !stats.routineLabelTimeSummaries.isEmpty {
-                    routineLabelTimeCard
+                    routineLabelPerformanceCard
                 }
                 if !stats.failReasonSummaries.isEmpty {
                     failurePatternCard
                 }
+                metricGrid
                 historySection
             }
             .padding(.horizontal, 16)
@@ -60,18 +59,18 @@ struct StreakPageView: View {
 
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Time Control")
+                    Text("Analysis")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(TaskListPalette.secondaryText)
                         .lineLimit(1)
 
-                    Text(period.title)
+                    Text("Streak")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(TaskListPalette.primaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
 
-                    Text(period.subtitle)
+                    Text(period.title)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(TaskListPalette.secondaryText)
                         .lineLimit(1)
@@ -107,7 +106,7 @@ struct StreakPageView: View {
         .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TaskListPalette.separator.opacity(0.68), lineWidth: 1)
+                .stroke(TaskListPalette.separator.opacity(0.28), lineWidth: 0.5)
         }
     }
 
@@ -122,6 +121,65 @@ struct StreakPageView: View {
 
     private var timeControlCard: some View {
         StreakTimeControlCard(stats: stats)
+    }
+
+    private var streakHeroCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label(stats.controlStateTitle, systemImage: stats.controlStateSymbol)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(stats.controlStateTint)
+                        .lineLimit(1)
+
+                    Text("\(stats.currentStreak)")
+                        .font(.system(size: 46, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(TaskListPalette.primaryText)
+                        .lineLimit(1)
+
+                    Text(stats.currentStreak == 1 ? "day streak" : "day streak")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(TaskListPalette.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 7) {
+                    Text("Today")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(TaskListPalette.tertiaryText)
+                        .lineLimit(1)
+
+                    Text(stats.todayStatusText)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(TaskListPalette.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+
+                    Text(stats.todayActionText)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(TaskListPalette.secondaryText)
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(2)
+                }
+            }
+
+            ProgressView(value: stats.completedTimeFraction)
+                .tint(stats.controlStateTint)
+
+            HStack(spacing: 8) {
+                StreakControlMetric(title: "Spent", value: stats.completedRoutineTimeText, tint: MissionTheme.success)
+                StreakControlMetric(title: "Failed", value: stats.exceptionRoutineTimeText, tint: MissionTheme.danger)
+                StreakControlMetric(title: "Open", value: stats.openRoutineTimeText, tint: MissionTheme.info)
+            }
+        }
+        .padding(16)
+        .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(TaskListPalette.separator.opacity(0.30), lineWidth: 0.5)
+        }
     }
 
     private var metricGrid: some View {
@@ -186,14 +244,14 @@ struct StreakPageView: View {
         .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TaskListPalette.separator.opacity(0.68), lineWidth: 1)
+                .stroke(TaskListPalette.separator.opacity(0.28), lineWidth: 0.5)
         }
     }
 
-    private var routineLabelTimeCard: some View {
+    private var routineLabelPerformanceCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Label control")
+                Text("Where your time went")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(TaskListPalette.primaryText)
 
@@ -210,19 +268,25 @@ struct StreakPageView: View {
                     StreakRoutineLabelTimeRow(summary: summary)
                 }
             }
+
+            Text(stats.labelInsightText)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(TaskListPalette.secondaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
         .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TaskListPalette.separator.opacity(0.68), lineWidth: 1)
+                .stroke(TaskListPalette.separator.opacity(0.28), lineWidth: 0.5)
         }
     }
 
     private var failurePatternCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Failure pattern")
+                Text("Why routines failed")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(TaskListPalette.primaryText)
 
@@ -244,7 +308,7 @@ struct StreakPageView: View {
         .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TaskListPalette.separator.opacity(0.68), lineWidth: 1)
+                .stroke(TaskListPalette.separator.opacity(0.28), lineWidth: 0.5)
         }
     }
 
@@ -314,7 +378,7 @@ struct StreakPageView: View {
                 .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(TaskListPalette.separator.opacity(0.68), lineWidth: 1)
+                        .stroke(TaskListPalette.separator.opacity(0.28), lineWidth: 0.5)
                 }
             }
         }
@@ -575,6 +639,13 @@ private struct StreakStats {
                 calendar: calendar
             )
         }
+        .sorted {
+            if $0.plannedMinutes != $1.plannedMinutes {
+                return $0.plannedMinutes > $1.plannedMinutes
+            }
+
+            return $0.label.title < $1.label.title
+        }
     }
 
     var scheduledRoutines: Int {
@@ -615,6 +686,58 @@ private struct StreakStats {
             let current = day.isSuccessDay ? result.current + 1 : 0
             return (max(result.best, current), current)
         }.best
+    }
+
+    var currentStreak: Int {
+        days
+            .filter { $0.scheduled > 0 }
+            .reversed()
+            .prefix { $0.isSuccessDay }
+            .count
+    }
+
+    var todaySummary: StreakDaySummary? {
+        days.last { Calendar.current.isDateInToday($0.date) }
+    }
+
+    var todayStatusText: String {
+        guard let todaySummary, todaySummary.scheduled > 0 else {
+            return "No routines"
+        }
+
+        if todaySummary.isSuccessDay {
+            return "Secured"
+        }
+
+        if todaySummary.open > 0 {
+            return "\(todaySummary.open) left"
+        }
+
+        if todaySummary.hasException {
+            return "Needs repair"
+        }
+
+        return "\(todaySummary.done)/\(todaySummary.scheduled)"
+    }
+
+    var todayActionText: String {
+        guard let todaySummary, todaySummary.scheduled > 0 else {
+            return "Nothing scheduled today."
+        }
+
+        if todaySummary.isSuccessDay {
+            return "Your streak is protected today."
+        }
+
+        if todaySummary.open > 0 {
+            return "Finish open routines to keep the streak."
+        }
+
+        if todaySummary.hasException {
+            return "Review what broke the routine."
+        }
+
+        return "Keep today's plan moving."
     }
 
     var activeDays: Int {
@@ -670,6 +793,32 @@ private struct StreakStats {
         return "\(completedMinutes.readableDuration) / \(plannedMinutes.readableDuration)"
     }
 
+    var labelInsightText: String {
+        guard let mostTime = routineLabelTimeSummaries.max(by: { $0.completedMinutes < $1.completedMinutes }) else {
+            return "Add labels to routines to see where your time goes."
+        }
+
+        if let weakest = routineLabelTimeSummaries
+            .filter({ $0.plannedMinutes > 0 && $0.failedMinutes > 0 })
+            .max(by: { $0.failedMinutes < $1.failedMinutes }) {
+            if mostTime.completedMinutes > 0 {
+                return "\(mostTime.label.title) has the most captured time. \(weakest.label.title) is where the most time was lost."
+            }
+
+            return "\(weakest.label.title) is where the most planned time was lost."
+        }
+
+        if mostTime.completedMinutes > 0 {
+            return "\(mostTime.label.title) has the most captured time this period."
+        }
+
+        guard let mostPlanned = routineLabelTimeSummaries.max(by: { $0.plannedMinutes < $1.plannedMinutes }) else {
+            return "Add labels to routines to see where your time goes."
+        }
+
+        return "\(mostPlanned.label.title) has the most planned time this period."
+    }
+
     var controlStateTitle: String {
         if plannedRoutineMinutes == 0 {
             return "Idle"
@@ -698,7 +847,7 @@ private struct StreakStats {
     var controlStateTint: Color {
         switch controlStateTitle {
         case "Live":
-            Color(uiColor: .systemBlue)
+            MissionTheme.info
         case "Exception":
             MissionTheme.danger
         case "Stable":
@@ -885,12 +1034,27 @@ private struct RoutineLabelTimeSummary: Identifiable {
         return min(1, Double(completedMinutes) / Double(denominatorMinutes))
     }
 
+    var failureFraction: Double {
+        guard denominatorMinutes > 0 else { return 0 }
+        return min(1, Double(failedMinutes) / Double(denominatorMinutes))
+    }
+
+    var successRateText: String {
+        guard plannedMinutes > 0 else { return "0%" }
+        return "\(Int((fraction * 100).rounded()))%"
+    }
+
+    var failureRateText: String {
+        guard plannedMinutes > 0 else { return "0%" }
+        return "\(Int((failureFraction * 100).rounded()))%"
+    }
+
     var detailText: String {
-        "Plan \(plannedMinutes.readableDuration) · Left \(remainingMinutes.readableDuration)"
+        "Planned \(plannedMinutes.readableDuration) · Left \(remainingMinutes.readableDuration)"
     }
 
     var outcomeText: String {
-        "S \(completedMinutes.readableDuration) · F \(failedMinutes.readableDuration)"
+        "\(completedMinutes.readableDuration) spent"
     }
 
     var status: RoutineLabelControlStatus {
@@ -974,14 +1138,14 @@ private struct StreakTimeControlCard: View {
             HStack(spacing: 8) {
                 StreakControlMetric(title: "Captured", value: stats.completedRoutineTimeText, tint: MissionTheme.success)
                 StreakControlMetric(title: "Lost", value: stats.exceptionRoutineTimeText, tint: MissionTheme.danger)
-                StreakControlMetric(title: "Live", value: stats.openRoutineTimeText, tint: Color(uiColor: .systemBlue))
+                StreakControlMetric(title: "Live", value: stats.openRoutineTimeText, tint: MissionTheme.info)
             }
         }
         .padding(14)
         .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TaskListPalette.separator.opacity(0.68), lineWidth: 1)
+                .stroke(TaskListPalette.separator.opacity(0.28), lineWidth: 0.5)
         }
     }
 }
@@ -1047,7 +1211,7 @@ private struct StreakMetricCard: View {
         .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TaskListPalette.separator.opacity(0.68), lineWidth: 1)
+                .stroke(TaskListPalette.separator.opacity(0.28), lineWidth: 0.5)
         }
     }
 }
@@ -1072,15 +1236,15 @@ private struct StreakRoutineLabelTimeRow: View {
         case RoutineLabel.rest.rawValue:
             TaskListPalette.secondaryText
         case RoutineLabel.sleep.rawValue:
-            Color(uiColor: .systemTeal)
+            TaskListPalette.secondaryText
         case RoutineLabel.health.rawValue:
             MissionTheme.success
         case RoutineLabel.money.rawValue:
-            Color(uiColor: .systemYellow)
+            TaskListPalette.secondaryText
         case RoutineLabel.admin.rawValue:
             TaskListPalette.secondaryText
         case RoutineLabel.social.rawValue:
-            Color(uiColor: .systemBlue)
+            TaskListPalette.secondaryText
         default:
             MissionTheme.accent
         }
@@ -1098,12 +1262,12 @@ private struct StreakRoutineLabelTimeRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .center, spacing: 10) {
                 RoutineLabelBadge(
                     label: summary.label,
                     fillsWidth: false,
-                    fixedWidth: 108,
+                    fixedWidth: 116,
                     font: .caption.weight(.semibold),
                     iconSize: 12,
                     height: 30,
@@ -1112,26 +1276,38 @@ private struct StreakRoutineLabelTimeRow: View {
                     normalBackground: TaskListPalette.fill
                 )
 
-                Text(summary.status.title)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(statusTint)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(statusTint.opacity(0.12), in: Capsule(style: .continuous))
-
                 Spacer(minLength: 8)
 
                 Text(summary.outcomeText)
                     .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(TaskListPalette.secondaryText)
+                    .foregroundStyle(TaskListPalette.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
             }
 
-            ProgressView(value: summary.fraction)
-                .tint(summary.status == .idle ? tint : statusTint)
+            GeometryReader { proxy in
+                let width = proxy.size.width
+
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(TaskListPalette.fill)
+
+                    Capsule(style: .continuous)
+                        .fill(MissionTheme.danger.opacity(0.22))
+                        .frame(width: width * summary.failureFraction)
+
+                    Capsule(style: .continuous)
+                        .fill(summary.status == .idle ? tint : statusTint)
+                        .frame(width: width * summary.fraction)
+                }
+            }
+            .frame(height: 8)
+
+            HStack(spacing: 8) {
+                StreakLabelStatPill(title: "Success", value: summary.successRateText, tint: MissionTheme.success)
+                StreakLabelStatPill(title: "Failed", value: summary.failureRateText, tint: MissionTheme.danger)
+                Spacer(minLength: 0)
+            }
 
             Text(summary.detailText)
                 .font(.caption2.weight(.medium))
@@ -1139,6 +1315,29 @@ private struct StreakRoutineLabelTimeRow: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.74)
         }
+    }
+}
+
+private struct StreakLabelStatPill: View {
+    let title: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(value)
+                .font(.caption2.weight(.bold).monospacedDigit())
+                .foregroundStyle(tint)
+                .lineLimit(1)
+
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(TaskListPalette.secondaryText)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(TaskListPalette.fill, in: Capsule(style: .continuous))
     }
 }
 
@@ -1227,7 +1426,7 @@ private struct StreakSignalMap: View {
         .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TaskListPalette.separator.opacity(0.68), lineWidth: 1)
+                .stroke(TaskListPalette.separator.opacity(0.28), lineWidth: 0.5)
         }
     }
 
@@ -1348,7 +1547,7 @@ private enum StreakSignalColor {
         }
 
         if day.open > 0 {
-            return Color(uiColor: .systemBlue).opacity(max(0.22, day.completionFraction * 0.48 + 0.22))
+            return MissionTheme.info.opacity(max(0.22, day.completionFraction * 0.48 + 0.22))
         }
 
         if day.isSuccessDay {
@@ -1367,7 +1566,7 @@ private struct StreakSignalLegend: View {
     var body: some View {
         HStack(spacing: 10) {
             legendItem(title: "Captured", color: MissionTheme.success)
-            legendItem(title: "Live", color: Color(uiColor: .systemBlue))
+            legendItem(title: "Live", color: MissionTheme.info)
             legendItem(title: "Exception", color: MissionTheme.danger)
             legendItem(title: "Idle", color: Color(uiColor: .tertiarySystemFill))
         }

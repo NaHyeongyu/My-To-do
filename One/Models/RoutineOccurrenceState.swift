@@ -10,7 +10,7 @@ enum RoutineOccurrenceStatus: String, CaseIterable {
         switch self {
         case .pending: "Open"
         case .done: "Done"
-        case .skipped: "Adjusted"
+        case .skipped: "Failed"
         }
     }
 

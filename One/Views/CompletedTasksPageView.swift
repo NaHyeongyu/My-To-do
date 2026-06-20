@@ -56,7 +56,7 @@ struct CompletedTasksPageView: View {
                     CompletedTaskRowView(item: item)
                         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
                         .listRowBackground(TaskListPalette.rowBackground)
-                        .listRowSeparatorTint(TaskListPalette.separator.opacity(0.78))
+                        .listRowSeparatorTint(TaskListPalette.separator.opacity(0.55))
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 delete(item)

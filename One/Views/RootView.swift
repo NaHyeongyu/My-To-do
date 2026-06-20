@@ -58,7 +58,7 @@ struct RootView: View {
             }
         }
         .confirmationDialog(
-            "Adjustment reason",
+            "Failure reason",
             isPresented: failReasonDialogBinding,
             titleVisibility: .visible
         ) {
@@ -68,7 +68,7 @@ struct RootView: View {
                 }
             }
 
-            Button("Adjust without reason") {
+            Button("Fail without reason") {
                 resolvePendingFail(with: nil)
             }
 

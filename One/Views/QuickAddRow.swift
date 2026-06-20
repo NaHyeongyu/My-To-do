@@ -41,7 +41,7 @@ struct QuickSingleTaskRow: View {
         .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isFocused ? TaskListPalette.focusedGlassStroke : TaskListPalette.glassStroke, lineWidth: isFocused ? 1.2 : 1)
+                .stroke(isFocused ? TaskListPalette.focusedGlassStroke : TaskListPalette.glassStroke, lineWidth: 0.5)
         }
     }
 

@@ -22,3 +22,11 @@ open One.xcodeproj
 ```
 
 Xcode에서 `One` 스킴을 선택하고 iOS 시뮬레이터 또는 실기기로 실행하면 됩니다.
+
+## Local Build
+
+```sh
+scripts/build_latest.sh
+```
+
+로컬 빌드는 위 스크립트를 사용합니다. 빌드를 임시 위치에 먼저 만든 뒤 성공하면 `build/DerivedData`만 최신 빌드로 유지하고, 이전 `.build`, `DerivedData`, 오래된 `build` 산출물은 자동으로 삭제합니다.

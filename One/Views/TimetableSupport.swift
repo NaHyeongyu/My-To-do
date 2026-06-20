@@ -143,7 +143,7 @@ struct RoutineDayProgress {
             return "No routines"
         }
 
-        return "\(pending) open · \(done) done · \(skipped) adjusted"
+        return "\(pending) open · \(done) done · \(skipped) failed"
     }
 }
 
@@ -243,9 +243,10 @@ struct CalendarNowModeCard: View {
                 emptyContent
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .missionCard()
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .missionLiquidCard()
         .dialogBackdrop(isPresented: versionMenuCandidate != nil)
         .confirmationDialog(
             "Version",
@@ -296,8 +297,8 @@ struct CalendarNowModeCard: View {
                     .background(MissionTheme.accent, in: Capsule(style: .continuous))
 
                 Text(progress.summaryText)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(MissionTheme.secondaryText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(MissionTheme.graphite.opacity(0.72))
                     .lineLimit(1)
                     .minimumScaleFactor(0.76)
 
@@ -322,7 +323,7 @@ struct CalendarNowModeCard: View {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(candidate.item.title)
-                        .font(.headline.weight(.semibold))
+                        .font(.headline.weight(.bold))
                         .foregroundStyle(MissionTheme.graphite)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
@@ -330,14 +331,10 @@ struct CalendarNowModeCard: View {
                     if let delayText = candidate.delayText {
                         Text(delayText)
                             .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(MissionTheme.secondaryText)
+                            .foregroundStyle(MissionTheme.graphite.opacity(0.72))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
-                            .overlay {
-                                Capsule(style: .continuous)
-                                    .stroke(MissionTheme.separator.opacity(0.68), lineWidth: 1)
-                            }
+                            .background(MissionTheme.panel, in: Capsule(style: .continuous))
                     }
                 }
 
@@ -355,8 +352,8 @@ struct CalendarNowModeCard: View {
 
                 if !candidate.item.notes.isEmpty {
                     Text(candidate.item.notes)
-                        .font(.caption)
-                        .foregroundStyle(MissionTheme.tertiaryText)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(MissionTheme.secondaryText)
                         .lineLimit(1)
                 }
             }
@@ -387,13 +384,13 @@ struct CalendarNowModeCard: View {
         } else {
             HStack(spacing: 8) {
                 RoutineOutcomeButton(
-                    title: "Adjust",
-                    systemImage: "arrow.triangle.2.circlepath",
+                    title: "Fail",
+                    systemImage: "xmark",
                     tint: MissionTheme.danger
                 ) {
                     onSkip(candidate.item)
                 }
-                .accessibilityLabel("Adjust routine")
+                .accessibilityLabel("Mark routine as failed")
 
                 if candidate.canSwitchVersion {
                     RoutineOutcomeButton(
@@ -407,13 +404,13 @@ struct CalendarNowModeCard: View {
                 }
 
                 RoutineOutcomeButton(
-                    title: "Done",
+                    title: "Success",
                     systemImage: "checkmark",
                     tint: MissionTheme.success
                 ) {
                     onDone(candidate.item)
                 }
-                .accessibilityLabel("Mark routine as done")
+                .accessibilityLabel("Mark routine as successful")
             }
             .font(.caption.weight(.semibold))
             .buttonBorderShape(.capsule)
@@ -422,8 +419,8 @@ struct CalendarNowModeCard: View {
 
     private func timeText(_ text: String) -> some View {
         Text(text)
-            .font(.caption.weight(.medium).monospacedDigit())
-            .foregroundStyle(MissionTheme.secondaryText)
+            .font(.caption.weight(.semibold).monospacedDigit())
+            .foregroundStyle(MissionTheme.graphite.opacity(0.68))
             .lineLimit(1)
     }
 
@@ -435,11 +432,7 @@ struct CalendarNowModeCard: View {
             .minimumScaleFactor(0.72)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
-            .overlay {
-                Capsule(style: .continuous)
-                    .stroke(MissionTheme.separator.opacity(0.68), lineWidth: 1)
-            }
+            .background(MissionTheme.panel, in: Capsule(style: .continuous))
     }
 
     private var lockedActionsLabel: some View {
@@ -456,10 +449,6 @@ struct CalendarNowModeCard: View {
         .frame(maxWidth: .infinity)
         .frame(height: 38)
         .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
-        .overlay {
-            Capsule(style: .continuous)
-                .stroke(MissionTheme.separator.opacity(0.68), lineWidth: 1)
-        }
         .accessibilityLabel("Routine actions available at start time")
     }
 
@@ -529,17 +518,13 @@ private struct MissionMetricPill: View {
 
             Text(title)
                 .font(.caption2.weight(.medium))
-                .foregroundStyle(MissionTheme.secondaryText)
+                .foregroundStyle(MissionTheme.graphite.opacity(0.62))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .frame(maxWidth: .infinity)
-        .background(MissionTheme.controlFill, in: Capsule(style: .continuous))
-        .overlay {
-            Capsule(style: .continuous)
-                .stroke(MissionTheme.separator.opacity(0.68), lineWidth: 1)
-        }
+        .background(MissionTheme.panel, in: Capsule(style: .continuous))
     }
 }
