@@ -90,18 +90,12 @@ struct TasksPageView: View {
                             .tint(MissionTheme.success)
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button {
-                                onEdit(item)
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                            }
-                            .tint(MissionTheme.accent)
-
                             Button(role: .destructive) {
                                 delete(item)
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
+                            .tint(MissionTheme.danger)
                         }
                 }
             }
@@ -201,10 +195,6 @@ private struct CompletedPinnedButton: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity)
-        .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TaskListPalette.glassStroke, lineWidth: 0.5)
-        }
+        .missionLiquidCard(cornerRadius: 14)
     }
 }

@@ -59,22 +59,35 @@ struct MissionTimelineLiquidBandModifier: ViewModifier {
 }
 
 struct MissionLiquidCardModifier: ViewModifier {
+    let cornerRadius: CGFloat
+
     private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: MissionTheme.radius, style: .continuous)
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
     }
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content
-                .background(MissionTheme.elevatedPanel, in: shape)
+                .background {
+                    MissionTheme.elevatedPanel
+                        .opacity(0.74)
+                        .clipShape(shape)
+                }
+                .glassEffect(.regular.tint(MissionTheme.panel.opacity(0.34)), in: shape)
+                .overlay(alignment: .topLeading) {
+                    shape
+                        .stroke(.white.opacity(0.20), lineWidth: 0.7)
+                        .blendMode(.plusLighter)
+                }
                 .overlay {
                     shape
                         .stroke(MissionTheme.separator.opacity(0.52), lineWidth: 0.75)
                 }
         } else {
             content
-                .background(MissionTheme.elevatedPanel, in: shape)
+                .background(.ultraThinMaterial, in: shape)
+                .background(MissionTheme.elevatedPanel.opacity(0.82), in: shape)
                 .overlay {
                     shape
                         .stroke(MissionTheme.separator.opacity(0.52), lineWidth: 0.75)
@@ -136,8 +149,8 @@ extension View {
         modifier(MissionCardModifier())
     }
 
-    func missionLiquidCard() -> some View {
-        modifier(MissionLiquidCardModifier())
+    func missionLiquidCard(cornerRadius: CGFloat = MissionTheme.radius) -> some View {
+        modifier(MissionLiquidCardModifier(cornerRadius: cornerRadius))
     }
 
     func missionTimelineLiquidBand() -> some View {

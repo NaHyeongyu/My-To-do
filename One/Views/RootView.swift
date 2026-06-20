@@ -503,7 +503,13 @@ struct RootView: View {
         case .routines:
             RoutinePlannerPageView(
                 items: items,
-                onEdit: { editorMode = .edit($0) }
+                onAdd: { weekday in
+                    editorMode = .new(.routine, nextDate(for: weekday))
+                },
+                onEdit: { editorMode = .edit($0) },
+                onDuplicate: duplicateRoutine,
+                onPause: pauseRoutine,
+                onDelete: deleteRoutine
             )
         case .streak:
             StreakPageView(
@@ -513,6 +519,50 @@ struct RootView: View {
         case .settings:
             SettingsPageView()
         }
+    }
+
+    private func nextDate(for weekday: RepeatWeekday) -> Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let currentWeekday = calendar.component(.weekday, from: today)
+        let offset = (weekday.rawValue - currentWeekday + 7) % 7
+        return calendar.date(byAdding: .day, value: offset, to: today) ?? today
+    }
+
+    private func duplicateRoutine(_ routine: ScheduleItem) {
+        let duplicate = ScheduleItem(
+            kind: .routine,
+            title: "\(routine.title) Copy",
+            notes: routine.notes,
+            taskDate: routine.taskDate,
+            startTime: routine.startTime,
+            endTime: routine.endTime,
+            repeatWeekdayMask: routine.repeatWeekdayMask,
+            activeFrom: routine.activeFrom,
+            activeUntil: routine.activeUntil,
+            routineLabelRawValue: routine.routineLabelRawValue,
+            routineVersionsRawValue: routine.routineVersionsRawValue,
+            sourceRoutineID: routine.sourceRoutineID
+        )
+
+        modelContext.insert(duplicate)
+        saveAndUpdateWidgetSnapshot()
+    }
+
+    private func pauseRoutine(_ routine: ScheduleItem, weekday: RepeatWeekday) {
+        guard routine.taskDate == nil else {
+            modelContext.delete(routine)
+            saveAndUpdateWidgetSnapshot()
+            return
+        }
+
+        routine.repeatWeekdayMask = routine.repeatWeekdayMask & ~weekday.bit
+        saveAndUpdateWidgetSnapshot()
+    }
+
+    private func deleteRoutine(_ routine: ScheduleItem) {
+        modelContext.delete(routine)
+        saveAndUpdateWidgetSnapshot()
     }
 }
 

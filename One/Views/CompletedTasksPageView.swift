@@ -58,9 +58,15 @@ struct CompletedTasksPageView: View {
                     .listRowBackground(Color.clear)
             } else {
                 ForEach(visibleCompletedTasks) { item in
-                    CompletedTaskRowView(item: item) {
-                        reactivate(item)
-                    }
+                    CompletedTaskRowView(
+                        item: item,
+                        onEdit: {
+                            editorItem = item
+                        },
+                        onReactivate: {
+                            reactivate(item)
+                        }
+                    )
                         .listRowInsets(EdgeInsets(top: 4, leading: horizontalPadding, bottom: 4, trailing: horizontalPadding))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -70,14 +76,7 @@ struct CompletedTasksPageView: View {
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
-                        }
-                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                            Button {
-                                editorItem = item
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                            }
-                            .tint(MissionTheme.accent)
+                            .tint(MissionTheme.danger)
                         }
                 }
             }
@@ -133,11 +132,7 @@ private struct CompletedDateFilterRow: View {
             .padding(.vertical, 10)
             .padding(.horizontal, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TaskListPalette.glassStroke, lineWidth: 0.5)
-            }
+            .missionLiquidCard(cornerRadius: 14)
     }
 }
 
@@ -159,6 +154,7 @@ private struct CompletedEmptyRow: View {
 
 private struct CompletedTaskRowView: View {
     let item: ScheduleItem
+    let onEdit: () -> Void
     let onReactivate: () -> Void
 
     private var completedDateText: String {
@@ -166,38 +162,48 @@ private struct CompletedTaskRowView: View {
     }
 
     var body: some View {
-        Button {
-            onReactivate()
-        } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 9) {
+        HStack(alignment: .firstTextBaseline, spacing: 9) {
+            Button {
+                onReactivate()
+            } label: {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.subheadline)
                     .foregroundStyle(MissionTheme.success)
-
-                Text(item.title)
-                    .font(.body.weight(.regular))
-                    .foregroundStyle(TaskListPalette.secondaryText)
-                    .strikethrough(true, color: TaskListPalette.tertiaryText.opacity(0.7))
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                Text(completedDateText)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(TaskListPalette.secondaryText)
-                    .lineLimit(1)
+                    .frame(width: 24, height: 24)
             }
-            .padding(.vertical, 11)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TaskListPalette.glassStroke, lineWidth: 0.5)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Reactivate \(item.title)")
+
+            Button {
+                onEdit()
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 9) {
+                    Text(item.title)
+                        .font(.body.weight(.regular))
+                        .foregroundStyle(TaskListPalette.secondaryText)
+                        .strikethrough(true, color: TaskListPalette.tertiaryText.opacity(0.7))
+                        .lineLimit(1)
+
+                    Spacer(minLength: 8)
+
+                    Text(completedDateText)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(TaskListPalette.secondaryText)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel("Edit \(item.title)")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Reactivate \(item.title)")
+        .padding(.vertical, 11)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(TaskListPalette.glassStroke, lineWidth: 0.5)
+        }
+        .contentShape(Rectangle())
     }
 }

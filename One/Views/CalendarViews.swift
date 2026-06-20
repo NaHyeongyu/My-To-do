@@ -48,10 +48,7 @@ struct CalendarControlHeader: View {
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 16)
-        .background(MissionTheme.panel)
-        .overlay(alignment: .bottom) {
-            TimelineDivider(color: MissionTheme.separator, opacity: 0.52)
-        }
+        .missionTimelineLiquidBand()
     }
 }
 
@@ -818,12 +815,6 @@ private enum CalendarMonthLayout {
         .padding(.trailing, showsStatusBadge ? 24 : (isCompact ? 7 : 9))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(eventBackground, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-        .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(statusTint)
-                .frame(width: 3)
-                .padding(.vertical, 7)
-        }
         .overlay(alignment: .topTrailing) {
             if showsStatusBadge {
                 statusBadge

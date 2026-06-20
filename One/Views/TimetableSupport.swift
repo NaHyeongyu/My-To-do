@@ -246,7 +246,7 @@ struct CalendarNowModeCard: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 10)
-        .missionLiquidCard()
+        .missionCard()
         .dialogBackdrop(isPresented: versionMenuCandidate != nil)
         .confirmationDialog(
             "Version",
