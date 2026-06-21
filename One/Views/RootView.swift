@@ -2,10 +2,6 @@ import SwiftData
 import SwiftUI
 import UserNotifications
 
-#if canImport(UIKit)
-import UIKit
-#endif
-
 struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
@@ -41,6 +37,7 @@ struct RootView: View {
                 .tag(AppPage.settings)
         }
         .tint(MissionTheme.accent)
+        .dialogBackdrop(isPresented: pendingFailRequest != nil)
         .sheet(
             item: $editorMode,
             onDismiss: {
@@ -52,10 +49,12 @@ struct RootView: View {
                 ScheduleItemEditorView(kind: kind, initialDate: initialDate)
             case let .edit(item):
                 ScheduleItemEditorView(item: item)
+            case let .editOccurrence(item, date):
+                ScheduleItemEditorView(item: item, occurrenceDate: date)
             }
         }
         .confirmationDialog(
-            "Why did this fail?",
+            "Failure reason",
             isPresented: failReasonDialogBinding,
             titleVisibility: .visible
         ) {
@@ -65,7 +64,7 @@ struct RootView: View {
                 }
             }
 
-            Button("Fail without reason", role: .destructive) {
+            Button("Fail without reason") {
                 resolvePendingFail(with: nil)
             }
 
@@ -78,8 +77,7 @@ struct RootView: View {
         .onAppear {
             checkNotificationPermissionOnLaunch()
             applyPendingWidgetRoutineOutcomes()
-            saveAndUpdateWidgetSnapshot()
-            syncRoutineNotifications()
+            saveAndUpdateWidgetSnapshot(syncNotifications: false)
         }
         .onChange(of: widgetSnapshotSignature) { _, _ in
             updateWidgetSnapshot(deferred: true)
@@ -108,62 +106,26 @@ struct RootView: View {
     }
 
     private var widgetSnapshotSignature: String {
-        let itemSignature = items
-            .map { item in
-                [
-                    item.id.uuidString,
-                    item.kindRawValue,
-                    item.title,
-                    item.createdAt.timeIntervalSince1970.description,
-                    item.taskDate?.timeIntervalSince1970.description ?? "",
-                    item.completedAt?.timeIntervalSince1970.description ?? "",
-                    item.startTime?.timeIntervalSince1970.description ?? "",
-                    item.endTime?.timeIntervalSince1970.description ?? "",
-                    item.repeatWeekdayMask.description,
-                    item.activeFrom?.timeIntervalSince1970.description ?? "",
-                    item.activeUntil?.timeIntervalSince1970.description ?? "",
-                    item.routineLabelRawValue ?? ""
-                ].joined(separator: "|")
-            }
-            .joined(separator: ";")
-        let stateSignature = routineStates
-            .map { state in
-                [
-                    state.routineID.uuidString,
-                    state.dayStart.timeIntervalSince1970.description,
-                    state.statusRawValue,
-                    state.failReasonRawValue ?? "",
-                    state.delayMinutes.description
-                ].joined(separator: "|")
-            }
-            .joined(separator: ";")
-
-        return "\(itemSignature)#\(stateSignature)"
+        AppDataSyncService.widgetSnapshotSignature(items: items, routineStates: routineStates)
     }
 
     private var routineNotificationSignature: String {
-        items
-            .filter { $0.kind == .routine }
-            .map { item in
-                [
-                    item.id.uuidString,
-                    item.title,
-                    item.notes,
-                    item.taskDate?.timeIntervalSince1970.description ?? "",
-                    item.startTime?.timeIntervalSince1970.description ?? "",
-                    item.endTime?.timeIntervalSince1970.description ?? "",
-                    item.repeatWeekdayMask.description,
-                    item.activeFrom?.timeIntervalSince1970.description ?? "",
-                    item.activeUntil?.timeIntervalSince1970.description ?? ""
-                ].joined(separator: "|")
-            }
-            .joined(separator: ";")
+        AppDataSyncService.routineNotificationSignature(items: items, routineStates: routineStates)
     }
 
-    private func saveAndUpdateWidgetSnapshot(deferred: Bool = false) {
-        try? modelContext.save()
-        updateWidgetSnapshot(deferred: deferred)
-        syncRoutineNotifications()
+    private func saveAndUpdateWidgetSnapshot(
+        deferred: Bool = false,
+        syncNotifications shouldSyncNotifications: Bool = true
+    ) {
+        AppDataSyncService.saveAndSync(
+            modelContext: modelContext,
+            queryItems: items,
+            queryRoutineStates: routineStates,
+            notificationsEnabled: notificationsEnabled,
+            scenePhase: scenePhase,
+            deferredWidget: deferred,
+            syncNotifications: shouldSyncNotifications
+        )
     }
 
     private func checkNotificationPermissionOnLaunch() {
@@ -178,16 +140,24 @@ struct RootView: View {
 
                 await MainActor.run {
                     notificationsEnabled = granted && updatedSettings.authorizationStatus.allowsLaunchNotifications
+                    UserDefaults.standard.set(true, forKey: AppSettingsKey.notificationPreferenceReconciled)
+                    syncRoutineNotifications()
                 }
             case .authorized, .provisional, .ephemeral:
                 await MainActor.run {
-                    if UserDefaults.standard.object(forKey: AppSettingsKey.notificationsEnabled) == nil {
+                    let defaults = UserDefaults.standard
+                    let hasStoredPreference = defaults.object(forKey: AppSettingsKey.notificationsEnabled) != nil
+                    let hasReconciledPreference = defaults.bool(forKey: AppSettingsKey.notificationPreferenceReconciled)
+                    if !hasStoredPreference || !hasReconciledPreference {
                         notificationsEnabled = true
+                        defaults.set(true, forKey: AppSettingsKey.notificationPreferenceReconciled)
                     }
+                    syncRoutineNotifications()
                 }
             case .denied:
                 await MainActor.run {
                     notificationsEnabled = false
+                    UserDefaults.standard.set(true, forKey: AppSettingsKey.notificationPreferenceReconciled)
                 }
                 await RoutineNotificationScheduler.shared.cancelRoutineNotifications()
             @unknown default:
@@ -197,44 +167,25 @@ struct RootView: View {
     }
 
     private func syncRoutineNotifications() {
-        let schedules = items.compactMap(RoutineNotificationSchedule.init(item:))
-        #if canImport(UIKit)
-        let backgroundTaskID = scenePhase == .background
-            ? UIApplication.shared.beginBackgroundTask(withName: "SyncRoutineNotifications", expirationHandler: nil)
-            : UIBackgroundTaskIdentifier.invalid
-        #endif
-
-        Task {
-            await RoutineNotificationScheduler.shared.syncNotifications(
-                enabled: notificationsEnabled,
-                for: schedules
-            )
-            #if canImport(UIKit)
-            await MainActor.run {
-                if backgroundTaskID != .invalid {
-                    UIApplication.shared.endBackgroundTask(backgroundTaskID)
-                }
-            }
-            #endif
-        }
+        AppDataSyncService.syncRoutineNotifications(
+            enabled: notificationsEnabled,
+            items: items,
+            routineStates: routineStates,
+            scenePhase: scenePhase
+        )
     }
 
     private func updateWidgetSnapshot(
         replacing updatedState: RoutineOccurrenceState? = nil,
         deferred: Bool = false
     ) {
-        let writeSnapshot = {
-            let states = routineStatesForWidget(replacing: updatedState)
-            WidgetSnapshotWriter.save(items: itemsForWidgetSnapshot(), routineStates: states)
-        }
-
-        if deferred {
-            DispatchQueue.main.async {
-                writeSnapshot()
-            }
-        } else {
-            writeSnapshot()
-        }
+        AppDataSyncService.updateWidgetSnapshot(
+            modelContext: modelContext,
+            queryItems: items,
+            queryRoutineStates: routineStates,
+            replacing: updatedState,
+            deferred: deferred
+        )
     }
 
     @discardableResult
@@ -286,27 +237,104 @@ struct RootView: View {
         )
     }
 
-    private func routineStatesForWidget(replacing updatedState: RoutineOccurrenceState?) -> [RoutineOccurrenceState] {
-        let states = fetchedRoutineStates()
+    private func moveRoutine(_ routine: ScheduleItem, on date: Date, toStartMinute startMinute: Int) {
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: date)
+        let durationMinutes = max(5, routine.durationMinutes(calendar: calendar))
+        let latestStartMinute = max(0, ScheduleItem.minutesPerDay - durationMinutes)
+        let normalizedStartMinute = min(latestStartMinute, max(0, startMinute))
+        let newStartTime = calendar.date(byAdding: .minute, value: normalizedStartMinute, to: dayStart) ?? dayStart
+        let newEndTime = calendar.date(byAdding: .minute, value: normalizedStartMinute + durationMinutes, to: dayStart) ?? newStartTime
 
-        guard let updatedState else {
-            return states
+        if routine.taskDate != nil {
+            routine.taskDate = dayStart
+            routine.startTime = newStartTime
+            routine.endTime = newEndTime
+            routine.activeFrom = nil
+            routine.activeUntil = nil
+            resetRoutineDelay(for: routine.id, on: dayStart)
+            saveAndUpdateWidgetSnapshot()
+            return
         }
 
-        return states.filter { state in
-            state.routineID != updatedState.routineID
-                || !Calendar.current.isDate(state.dayStart, inSameDayAs: updatedState.dayStart)
-        } + [updatedState]
+        let existingOccurrence = existingRoutineOccurrenceOverride(for: routine.id, on: dayStart)
+        let occurrence = existingOccurrence
+            ?? ScheduleItem(
+                kind: .routine,
+                title: routine.title,
+                notes: routine.notes,
+                taskDate: dayStart,
+                startTime: newStartTime,
+                endTime: newEndTime,
+                repeatWeekdayMask: 0,
+                routineLabelRawValue: routine.routineLabelRawValue,
+                routineVersionsRawValue: routine.routineVersionsRawValue,
+                sourceRoutineID: routine.id
+            )
+
+        if existingOccurrence == nil {
+            modelContext.insert(occurrence)
+        }
+
+        occurrence.kind = .routine
+        occurrence.title = routine.title
+        occurrence.notes = routine.notes
+        occurrence.taskDate = dayStart
+        occurrence.startTime = newStartTime
+        occurrence.endTime = newEndTime
+        occurrence.repeatWeekdayMask = 0
+        occurrence.activeFrom = nil
+        occurrence.activeUntil = nil
+        occurrence.routineLabelRawValue = routine.routineLabelRawValue
+        occurrence.routineVersionsRawValue = routine.routineVersionsRawValue
+        occurrence.sourceRoutineID = routine.id
+
+        moveRoutineStateAndResetDelay(from: routine.id, to: occurrence.id, on: dayStart)
+        saveAndUpdateWidgetSnapshot()
+    }
+
+    private func existingRoutineOccurrenceOverride(for sourceRoutineID: UUID, on dayStart: Date) -> ScheduleItem? {
+        itemsForWidgetSnapshot().first { candidate in
+            candidate.kind == .routine
+                && candidate.sourceRoutineID == sourceRoutineID
+                && candidate.taskDate.map { Calendar.current.isDate($0, inSameDayAs: dayStart) } == true
+        }
+    }
+
+    private func moveRoutineStateAndResetDelay(from oldID: UUID, to newID: UUID, on dayStart: Date) {
+        let states = fetchedRoutineStates()
+        let calendar = Calendar.current
+
+        for state in states where calendar.isDate(state.dayStart, inSameDayAs: dayStart) {
+            if state.routineID == oldID {
+                state.routineID = newID
+                state.delayMinutes = 0
+                state.isHidden = false
+                state.updatedAt = .now
+            } else if state.routineID == newID {
+                state.delayMinutes = 0
+                state.updatedAt = .now
+            }
+        }
+    }
+
+    private func resetRoutineDelay(for routineID: UUID, on dayStart: Date) {
+        let states = fetchedRoutineStates()
+        let calendar = Calendar.current
+
+        for state in states
+            where state.routineID == routineID && calendar.isDate(state.dayStart, inSameDayAs: dayStart) {
+            state.delayMinutes = 0
+            state.updatedAt = .now
+        }
     }
 
     private func itemsForWidgetSnapshot() -> [ScheduleItem] {
-        let descriptor = FetchDescriptor<ScheduleItem>()
-        return (try? modelContext.fetch(descriptor)) ?? items
+        AppDataSyncService.fetchedItems(modelContext: modelContext, fallback: items)
     }
 
     private func fetchedRoutineStates() -> [RoutineOccurrenceState] {
-        let descriptor = FetchDescriptor<RoutineOccurrenceState>()
-        return (try? modelContext.fetch(descriptor)) ?? routineStates
+        AppDataSyncService.fetchedRoutineStates(modelContext: modelContext, fallback: routineStates)
     }
 
     private func applyPendingWidgetRoutineOutcomes() {
@@ -315,9 +343,15 @@ struct RootView: View {
             return
         }
 
-        let routines = itemsForWidgetSnapshot().filter { $0.kind == .routine }
+        let snapshotItems = itemsForWidgetSnapshot()
+        let states = fetchedRoutineStates()
 
         for command in commands {
+            let routines = snapshotItems.routines(
+                on: command.occurredAt,
+                routineStates: states,
+                calendar: .current
+            )
             guard let routine = routines.first(where: { $0.id == command.routineID }) else {
                 continue
             }
@@ -398,7 +432,7 @@ struct RootView: View {
         let today = calendar.startOfDay(for: now)
         let currentMinute = calendar.minuteOfDay(for: now)
         let candidates: [(routine: ScheduleItem, startMinute: Int, endMinute: Int)] = items
-            .routines(on: today, calendar: calendar)
+            .routines(on: today, routineStates: routineStates, calendar: calendar)
             .compactMap { routine in
                 let state = routineStates.state(for: routine, on: today, calendar: calendar)
                 guard state?.isResolved != true else {
@@ -407,7 +441,7 @@ struct RootView: View {
 
                 let delayMinutes = state?.delayMinutes ?? 0
                 let startMinute = calendar.minuteOfDay(for: routine.startTime ?? today) + delayMinutes
-                let endMinute = startMinute + max(5, routine.durationMinutes(calendar: calendar))
+                let endMinute = startMinute + max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
                 return (routine, startMinute, endMinute)
             }
 
@@ -454,7 +488,12 @@ struct RootView: View {
                 items: items,
                 routineStates: routineStates,
                 onAddRoutine: { editorMode = .new(.routine, $0) },
-                onEdit: { editorMode = .edit($0) },
+                onEdit: { routine, date in
+                    editorMode = .editOccurrence(routine, date)
+                },
+                onMoveRoutine: { routine, date, startMinute in
+                    moveRoutine(routine, on: date, toStartMinute: startMinute)
+                },
                 onMarkRoutineDone: { routine, date in
                     upsertRoutineState(for: routine, on: date, status: .done)
                 },
@@ -465,6 +504,7 @@ struct RootView: View {
         case .tasks:
             TasksPageView(
                 items: items,
+                onEdit: { editorMode = .edit($0) },
                 onItemsChanged: {
                     saveAndUpdateWidgetSnapshot()
                 }
@@ -472,7 +512,13 @@ struct RootView: View {
         case .routines:
             RoutinePlannerPageView(
                 items: items,
-                onEdit: { editorMode = .edit($0) }
+                onAdd: { weekday in
+                    editorMode = .new(.routine, nextDate(for: weekday))
+                },
+                onEdit: { editorMode = .edit($0) },
+                onDuplicate: duplicateRoutine,
+                onPause: pauseRoutine,
+                onDelete: deleteRoutine
             )
         case .streak:
             StreakPageView(
@@ -483,11 +529,56 @@ struct RootView: View {
             SettingsPageView()
         }
     }
+
+    private func nextDate(for weekday: RepeatWeekday) -> Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let currentWeekday = calendar.component(.weekday, from: today)
+        let offset = (weekday.rawValue - currentWeekday + 7) % 7
+        return calendar.date(byAdding: .day, value: offset, to: today) ?? today
+    }
+
+    private func duplicateRoutine(_ routine: ScheduleItem) {
+        let duplicate = ScheduleItem(
+            kind: .routine,
+            title: "\(routine.title) Copy",
+            notes: routine.notes,
+            taskDate: routine.taskDate,
+            startTime: routine.startTime,
+            endTime: routine.endTime,
+            repeatWeekdayMask: routine.repeatWeekdayMask,
+            activeFrom: routine.activeFrom,
+            activeUntil: routine.activeUntil,
+            routineLabelRawValue: routine.routineLabelRawValue,
+            routineVersionsRawValue: routine.routineVersionsRawValue,
+            sourceRoutineID: routine.sourceRoutineID
+        )
+
+        modelContext.insert(duplicate)
+        saveAndUpdateWidgetSnapshot()
+    }
+
+    private func pauseRoutine(_ routine: ScheduleItem, weekday: RepeatWeekday) {
+        guard routine.taskDate == nil else {
+            modelContext.delete(routine)
+            saveAndUpdateWidgetSnapshot()
+            return
+        }
+
+        routine.repeatWeekdayMask = routine.repeatWeekdayMask & ~weekday.bit
+        saveAndUpdateWidgetSnapshot()
+    }
+
+    private func deleteRoutine(_ routine: ScheduleItem) {
+        modelContext.delete(routine)
+        saveAndUpdateWidgetSnapshot()
+    }
 }
 
 private enum EditorMode: Identifiable {
     case new(ScheduleKind, Date?)
     case edit(ScheduleItem)
+    case editOccurrence(ScheduleItem, Date)
 
     var id: String {
         switch self {
@@ -495,6 +586,8 @@ private enum EditorMode: Identifiable {
             "new-\(kind.rawValue)-\(initialDate?.timeIntervalSince1970.description ?? "default")"
         case let .edit(item):
             "edit-\(item.id.uuidString)"
+        case let .editOccurrence(item, date):
+            "edit-occurrence-\(item.id.uuidString)-\(date.timeIntervalSince1970)"
         }
     }
 }

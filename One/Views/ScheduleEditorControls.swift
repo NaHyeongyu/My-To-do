@@ -46,14 +46,14 @@ private struct WeekdaySelectionButton: View {
         Button(action: action) {
             Text(weekday.compactTitle)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(isSelected ? TaskListPalette.selectedText : TaskListPalette.secondaryText)
+                .foregroundStyle(isSelected ? MissionTheme.selectedText : MissionTheme.graphite)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity)
                 .frame(height: 34)
                 .background {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(isSelected ? TaskListPalette.primaryText : TaskListPalette.fill)
+                        .fill(isSelected ? MissionTheme.selection : MissionTheme.controlFill)
                 }
         }
         .buttonStyle(.plain)

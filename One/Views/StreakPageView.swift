@@ -6,7 +6,9 @@ struct StreakPageView: View {
 
     @State private var mode: StreakPeriodMode = .week
     @State private var referenceDate = Calendar.current.startOfDay(for: .now)
-    @State private var routineLabelTargetMinutes: [RoutineLabel: Int] = [:]
+    @State private var drillDown: StreakDrillDown?
+
+    @AppStorage(AppSettingsKey.customRoutineLabels) private var customRoutineLabelsRaw = CustomRoutineLabelStore.emptyStorage
 
     private var calendar: Calendar {
         var calendar = Calendar.current
@@ -22,7 +24,7 @@ struct StreakPageView: View {
         StreakStats(
             items: items,
             routineStates: routineStates,
-            routineLabelTargetMinutes: routineLabelTargetMinutes,
+            routineLabelOptions: routineLabelOptions,
             period: period,
             now: .now,
             calendar: calendar
@@ -32,17 +34,22 @@ struct StreakPageView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                modePicker
-                periodHeader
-                metricGrid
-                StreakDayRail(days: stats.days)
-                timeCard
-                if mode == .week {
-                    routineLabelTimeCard
+                controlHeader
+                streakHeroCard
+                StreakSignalMap(days: stats.days, mode: mode) { day in
+                    drillDown = StreakDrillDown(
+                        title: day.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()),
+                        subtitle: day.statusText,
+                        rows: stats.drillDownRows(for: day)
+                    )
+                }
+                if !stats.routineLabelTimeSummaries.isEmpty {
+                    routineLabelPerformanceCard
                 }
                 if !stats.failReasonSummaries.isEmpty {
                     failurePatternCard
                 }
+                metricGrid
                 historySection
             }
             .padding(.horizontal, 16)
@@ -51,9 +58,63 @@ struct StreakPageView: View {
         }
         .background(TaskListPalette.background)
         .sensoryFeedback(.selection, trigger: mode)
-        .onAppear {
-            reloadRoutineLabelTargets()
+        .sheet(item: $drillDown) { drillDown in
+            StreakDrillDownView(drillDown: drillDown)
         }
+    }
+
+    private var controlHeader: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            modePicker
+
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Analysis")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(TaskListPalette.secondaryText)
+                        .lineLimit(1)
+
+                    Text("Streak")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(TaskListPalette.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+
+                    Text(period.title)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(TaskListPalette.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 8) {
+                    Button {
+                        movePeriod(by: -1)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.circle)
+                    .accessibilityLabel("Previous \(mode.title.lowercased())")
+
+                    Button {
+                        movePeriod(by: 1)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.circle)
+                    .disabled(!canMoveToNextPeriod)
+                    .accessibilityLabel("Next \(mode.title.lowercased())")
+                }
+                .tint(MissionTheme.accent)
+            }
+        }
+        .padding(14)
+        .missionLiquidCard(cornerRadius: 14)
     }
 
     private var modePicker: some View {
@@ -65,45 +126,66 @@ struct StreakPageView: View {
         .pickerStyle(.segmented)
     }
 
-    private var periodHeader: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(period.title)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(TaskListPalette.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+    private var timeControlCard: some View {
+        StreakTimeControlCard(stats: stats)
+    }
 
-                Text(mode == .week ? "Resets Sunday" : "Month view")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(TaskListPalette.secondaryText)
-                    .lineLimit(1)
+    private var streakHeroCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label(stats.controlStateTitle, systemImage: stats.controlStateSymbol)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(stats.controlStateTint)
+                        .lineLimit(1)
+
+                    Text("\(stats.currentStreak)")
+                        .font(.system(size: 46, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(TaskListPalette.primaryText)
+                        .lineLimit(1)
+
+                    Text("day streak")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(TaskListPalette.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 7) {
+                    Text("Today")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(TaskListPalette.tertiaryText)
+                        .lineLimit(1)
+
+                    Text(stats.todayStatusText)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(TaskListPalette.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+
+                    Text(stats.todayActionText)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(TaskListPalette.secondaryText)
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(2)
+                }
             }
 
-            Spacer(minLength: 8)
+            ProgressView(value: stats.completedTimeFraction)
+                .tint(stats.controlStateTint)
 
             HStack(spacing: 8) {
-                Button {
-                    movePeriod(by: -1)
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 32, height: 32)
-                }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.circle)
-                .accessibilityLabel("Previous \(mode.title.lowercased())")
-
-                Button {
-                    movePeriod(by: 1)
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .frame(width: 32, height: 32)
-                }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.circle)
-                .accessibilityLabel("Next \(mode.title.lowercased())")
+                StreakControlMetric(title: "Spent", value: stats.completedRoutineTimeText, tint: MissionTheme.success)
+                StreakControlMetric(title: "Failed", value: stats.exceptionRoutineTimeText, tint: MissionTheme.danger)
+                StreakControlMetric(title: "Open", value: stats.openRoutineTimeText, tint: MissionTheme.info)
             }
-            .tint(MissionTheme.accent)
+        }
+        .padding(16)
+        .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(TaskListPalette.separator.opacity(0.30), lineWidth: 0.5)
         }
     }
 
@@ -119,32 +201,56 @@ struct StreakPageView: View {
                 title: "Routine success",
                 value: stats.successRateText,
                 detail: "\(stats.doneRoutines) of \(stats.scheduledRoutines) done"
-            )
+            ) {
+                drillDown = StreakDrillDown(
+                    title: "Routine success",
+                    subtitle: stats.successRateText,
+                    rows: stats.drillDownRows(for: .success)
+                )
+            }
 
             StreakMetricCard(
-                title: "Best streak",
-                value: "\(stats.bestStreak)",
-                detail: stats.bestStreak == 1 ? "success day" : "success days"
-            )
+                title: "Active days",
+                value: "\(stats.activeDays)",
+                detail: "\(stats.bestStreak) best streak"
+            ) {
+                drillDown = StreakDrillDown(
+                    title: "Active days",
+                    subtitle: "\(stats.activeDays) active days",
+                    rows: stats.activeDayRows()
+                )
+            }
 
             StreakMetricCard(
                 title: "Tasks done",
                 value: "\(stats.completedTasks.count)",
                 detail: "completed in range"
-            )
+            ) {
+                drillDown = StreakDrillDown(
+                    title: "Tasks done",
+                    subtitle: "Completed in range",
+                    rows: stats.completedTaskRows()
+                )
+            }
 
             StreakMetricCard(
-                title: "Open routines",
-                value: "\(stats.openRoutines)",
-                detail: "\(stats.skippedRoutines) skipped · \(stats.missedRoutines) missed"
-            )
+                title: "Exceptions",
+                value: "\(stats.exceptionRoutines)",
+                detail: "\(stats.skippedRoutines) failed · \(stats.missedRoutines) missed"
+            ) {
+                drillDown = StreakDrillDown(
+                    title: "Exceptions",
+                    subtitle: "\(stats.skippedRoutines) failed · \(stats.missedRoutines) missed",
+                    rows: stats.drillDownRows(for: .exceptions)
+                )
+            }
         }
     }
 
     private var timeCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Routine time")
+                Text("Captured time")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(TaskListPalette.primaryText)
 
@@ -159,7 +265,7 @@ struct StreakPageView: View {
             ProgressView(value: stats.completedTimeFraction)
                 .tint(MissionTheme.accent)
 
-            Text("\(stats.completedRoutineTimeText) completed of \(stats.plannedRoutineTimeText) planned")
+            Text("\(stats.completedRoutineTimeText) captured of \(stats.plannedRoutineTimeText) planned")
                 .font(.caption.weight(.medium))
                 .foregroundStyle(TaskListPalette.secondaryText)
                 .lineLimit(1)
@@ -173,26 +279,41 @@ struct StreakPageView: View {
         }
     }
 
-    private var routineLabelTimeCard: some View {
+    private var routineLabelPerformanceCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Label command center")
+                Text("Where your time went")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(TaskListPalette.primaryText)
 
                 Spacer(minLength: 8)
 
-                Text(stats.weeklyRoutineLabelTotalText)
+                Text(stats.routineLabelTotalText)
                     .font(.subheadline.weight(.semibold).monospacedDigit())
                     .foregroundStyle(TaskListPalette.secondaryText)
                     .lineLimit(1)
             }
 
             VStack(spacing: 12) {
-                ForEach(stats.weeklyRoutineLabelSummaries) { summary in
-                    StreakRoutineLabelTimeRow(summary: summary)
+                ForEach(stats.routineLabelTimeSummaries) { summary in
+                    Button {
+                        drillDown = StreakDrillDown(
+                            title: summary.label.title,
+                            subtitle: summary.detailText,
+                            rows: stats.drillDownRows(for: summary.label)
+                        )
+                    } label: {
+                        StreakRoutineLabelTimeRow(summary: summary)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
+
+            Text(stats.labelInsightText)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(TaskListPalette.secondaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
         .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -205,7 +326,7 @@ struct StreakPageView: View {
     private var failurePatternCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Failure pattern")
+                Text("Why routines failed")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(TaskListPalette.primaryText)
 
@@ -219,7 +340,16 @@ struct StreakPageView: View {
 
             VStack(spacing: 10) {
                 ForEach(stats.failReasonSummaries) { summary in
-                    StreakFailReasonRow(summary: summary)
+                    Button {
+                        drillDown = StreakDrillDown(
+                            title: summary.title,
+                            subtitle: summary.detailText,
+                            rows: stats.drillDownRows(for: summary)
+                        )
+                    } label: {
+                        StreakFailReasonRow(summary: summary)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -304,7 +434,16 @@ struct StreakPageView: View {
     }
 
     private func movePeriod(by value: Int) {
-        let component: Calendar.Component = mode == .week ? .weekOfYear : .month
+        let component: Calendar.Component
+        switch mode {
+        case .week:
+            component = .weekOfYear
+        case .month:
+            component = .month
+        case .year:
+            component = .year
+        }
+
         guard let nextDate = calendar.date(byAdding: component, value: value, to: referenceDate) else {
             return
         }
@@ -314,18 +453,24 @@ struct StreakPageView: View {
         }
     }
 
-    private func reloadRoutineLabelTargets() {
-        routineLabelTargetMinutes = Dictionary(
-            uniqueKeysWithValues: RoutineLabel.allCases.map {
-                ($0, RoutineLabelTargetStore.weeklyTargetMinutes(for: $0))
-            }
-        )
+    private var canMoveToNextPeriod: Bool {
+        let currentPeriod = StreakPeriod(mode: mode, containing: .now, calendar: calendar)
+        return period.end < currentPeriod.end
+    }
+
+    private var customRoutineLabels: [CustomRoutineLabel] {
+        CustomRoutineLabelStore.labels(from: customRoutineLabelsRaw)
+    }
+
+    private var routineLabelOptions: [RoutineLabelOption] {
+        RoutineLabelOption.options(customLabels: customRoutineLabels)
     }
 }
 
 private enum StreakPeriodMode: String, CaseIterable, Identifiable {
     case week
     case month
+    case year
 
     var id: String { rawValue }
 
@@ -333,6 +478,7 @@ private enum StreakPeriodMode: String, CaseIterable, Identifiable {
         switch self {
         case .week: "Week"
         case .month: "Month"
+        case .year: "Year"
         }
     }
 }
@@ -360,6 +506,11 @@ private struct StreakPeriod {
             let monthStart = calendar.date(from: components).map(calendar.startOfDay(for:)) ?? calendar.startOfDay(for: date)
             self.start = monthStart
             self.end = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        case .year:
+            let components = calendar.dateComponents([.year], from: date)
+            let yearStart = calendar.date(from: components).map(calendar.startOfDay(for:)) ?? calendar.startOfDay(for: date)
+            self.start = yearStart
+            self.end = calendar.date(byAdding: .year, value: 1, to: yearStart) ?? yearStart
         }
     }
 
@@ -370,6 +521,19 @@ private struct StreakPeriod {
             return "\(start.formatted(.dateTime.month(.abbreviated).day())) - \(endDate.formatted(.dateTime.month(.abbreviated).day()))"
         case .month:
             return start.formatted(.dateTime.month(.wide).year())
+        case .year:
+            return start.formatted(.dateTime.year())
+        }
+    }
+
+    var subtitle: String {
+        switch mode {
+        case .week:
+            "Weekly routine operations"
+        case .month:
+            "Monthly time coverage"
+        case .year:
+            "Annual control surface"
         }
     }
 
@@ -382,7 +546,7 @@ private struct StreakStats {
     let days: [StreakDaySummary]
     let completedTasks: [ScheduleItem]
     let completedRoutineOccurrences: [StreakRoutineOccurrence]
-    let weeklyRoutineLabelSummaries: [RoutineLabelTimeSummary]
+    let routineLabelTimeSummaries: [RoutineLabelTimeSummary]
     let failReasonSummaries: [RoutineFailReasonSummary]
 
     private let scheduledOccurrences: [StreakRoutineOccurrence]
@@ -390,7 +554,7 @@ private struct StreakStats {
     init(
         items: [ScheduleItem],
         routineStates: [RoutineOccurrenceState],
-        routineLabelTargetMinutes: [RoutineLabel: Int],
+        routineLabelOptions: [RoutineLabelOption],
         period: StreakPeriod,
         now: Date,
         calendar: Calendar
@@ -398,47 +562,35 @@ private struct StreakStats {
         let todayStart = calendar.startOfDay(for: now)
         let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart) ?? now
         let analysisEnd = min(period.end, tomorrowStart)
-        let routineItems = items.filter { $0.kind == .routine }
+        let displayDates = Self.dates(from: period.start, to: period.end, calendar: calendar)
         let includedDates = Self.dates(from: period.start, to: analysisEnd, calendar: calendar)
-        let weeklyTargetDates = period.mode == .week
+        let labelTargetDates = period.mode == .week
             ? Self.dates(from: period.start, to: period.end, calendar: calendar)
             : includedDates
 
         var allOccurrences: [StreakRoutineOccurrence] = []
         var dailySummaries: [StreakDaySummary] = []
-        var weeklyLabelOccurrences: [StreakRoutineOccurrence] = []
+        var labelOccurrences: [StreakRoutineOccurrence] = []
+        let customRoutineLabels = routineLabelOptions
+            .filter(\.isCustom)
+            .map { CustomRoutineLabel(id: $0.rawValue, title: $0.title, symbolName: $0.symbolName) }
+        let stateLookup = RoutineOccurrenceStateLookup(states: routineStates, calendar: calendar)
 
-        for date in includedDates {
-            let routines = routineItems
-                .filter { Self.isRoutine($0, scheduledOn: date, calendar: calendar) }
-                .sorted {
-                    calendar.minuteOfDay(for: $0.startTime ?? .distantFuture)
-                        < calendar.minuteOfDay(for: $1.startTime ?? .distantFuture)
-                }
+        for date in displayDates {
+            guard date < analysisEnd else {
+                dailySummaries.append(StreakDaySummary(date: date, occurrences: [], calendar: calendar))
+                continue
+            }
 
+            let routines = items.routines(on: date, routineStates: routineStates, calendar: calendar)
             let occurrences = routines.map { routine in
-                let state = routineStates.state(for: routine, on: date, calendar: calendar)
-                let status = state?.status ?? .pending
-                let effectiveStatus: StreakOccurrenceStatus
-
-                switch status {
-                case .done:
-                    effectiveStatus = .done
-                case .skipped:
-                    effectiveStatus = .skipped
-                case .pending:
-                    effectiveStatus = date < todayStart ? .missed : .open
-                }
-
-                return StreakRoutineOccurrence(
-                    id: "\(routine.id.uuidString)-\(date.timeIntervalSince1970)",
-                    routineID: routine.id,
-                    title: routine.title,
-                    label: routine.routineLabel,
-                    date: date,
-                    status: effectiveStatus,
-                    failReason: state?.failReason,
-                    minutes: routine.durationMinutes(calendar: calendar)
+                Self.occurrence(
+                    for: routine,
+                    on: date,
+                    todayStart: todayStart,
+                    customRoutineLabels: customRoutineLabels,
+                    stateLookup: stateLookup,
+                    calendar: calendar
                 )
             }
 
@@ -446,41 +598,21 @@ private struct StreakStats {
             dailySummaries.append(StreakDaySummary(date: date, occurrences: occurrences, calendar: calendar))
         }
 
-        for date in weeklyTargetDates {
-            let routines = routineItems
-                .filter { $0.taskDate == nil && Self.isRoutine($0, scheduledOn: date, calendar: calendar) }
-                .sorted {
-                    calendar.minuteOfDay(for: $0.startTime ?? .distantFuture)
-                        < calendar.minuteOfDay(for: $1.startTime ?? .distantFuture)
-                }
-
+        for date in labelTargetDates {
+            let routines = items.routines(on: date, routineStates: routineStates, calendar: calendar)
             let occurrences = routines.map { routine in
-                let state = routineStates.state(for: routine, on: date, calendar: calendar)
-                let status = state?.status ?? .pending
-                let effectiveStatus: StreakOccurrenceStatus
-
-                switch status {
-                case .done:
-                    effectiveStatus = .done
-                case .skipped:
-                    effectiveStatus = .skipped
-                case .pending:
-                    effectiveStatus = date < todayStart ? .missed : .open
-                }
-
-                return StreakRoutineOccurrence(
-                    id: "label-\(routine.id.uuidString)-\(date.timeIntervalSince1970)",
-                    routineID: routine.id,
-                    title: routine.title,
-                    label: routine.routineLabel,
-                    date: date,
-                    status: effectiveStatus,
-                    failReason: state?.failReason,
-                    minutes: routine.durationMinutes(calendar: calendar)
+                Self.occurrence(
+                    for: routine,
+                    on: date,
+                    todayStart: todayStart,
+                    customRoutineLabels: customRoutineLabels,
+                    stateLookup: stateLookup,
+                    calendar: calendar,
+                    idPrefix: "label"
                 )
             }
 
-            weeklyLabelOccurrences.append(contentsOf: occurrences)
+            labelOccurrences.append(contentsOf: occurrences)
         }
 
         self.scheduledOccurrences = allOccurrences
@@ -495,27 +627,37 @@ private struct StreakStats {
             }
             .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
         self.failReasonSummaries = Self.failReasonSummaries(from: allOccurrences)
-        self.weeklyRoutineLabelSummaries = RoutineLabel.allCases.map { label in
-            let labelOccurrences = weeklyLabelOccurrences.filter { $0.label == Optional(label) }
-            let plannedMinutes = labelOccurrences.reduce(0) { $0 + $1.minutes }
-            let completedMinutes = labelOccurrences
+        self.routineLabelTimeSummaries = routineLabelOptions.compactMap { label in
+            let matchingOccurrences = labelOccurrences.filter { $0.label?.rawValue == label.rawValue }
+            let plannedMinutes = matchingOccurrences.reduce(0) { $0 + $1.minutes }
+            let completedMinutes = matchingOccurrences
                 .filter { $0.status == .done }
                 .reduce(0) { $0 + $1.minutes }
-            let failedMinutes = labelOccurrences
+            let failedMinutes = matchingOccurrences
                 .filter { $0.status == .skipped || $0.status == .missed }
                 .reduce(0) { $0 + $1.minutes }
+
+            guard plannedMinutes > 0 || completedMinutes > 0 || failedMinutes > 0 else {
+                return nil
+            }
 
             return RoutineLabelTimeSummary(
                 label: label,
                 plannedMinutes: plannedMinutes,
                 completedMinutes: completedMinutes,
                 failedMinutes: failedMinutes,
-                targetMinutes: routineLabelTargetMinutes[label] ?? 0,
                 periodStart: period.start,
                 periodEnd: period.end,
                 now: now,
                 calendar: calendar
             )
+        }
+        .sorted {
+            if $0.plannedMinutes != $1.plannedMinutes {
+                return $0.plannedMinutes > $1.plannedMinutes
+            }
+
+            return $0.label.title < $1.label.title
         }
     }
 
@@ -533,6 +675,10 @@ private struct StreakStats {
 
     var missedRoutines: Int {
         scheduledOccurrences.filter { $0.status == .missed }.count
+    }
+
+    var exceptionRoutines: Int {
+        skippedRoutines + missedRoutines
     }
 
     var openRoutines: Int {
@@ -555,6 +701,62 @@ private struct StreakStats {
         }.best
     }
 
+    var currentStreak: Int {
+        days
+            .filter { $0.scheduled > 0 }
+            .reversed()
+            .prefix { $0.isSuccessDay }
+            .count
+    }
+
+    var todaySummary: StreakDaySummary? {
+        days.last { Calendar.current.isDateInToday($0.date) }
+    }
+
+    var todayStatusText: String {
+        guard let todaySummary, todaySummary.scheduled > 0 else {
+            return "No routines"
+        }
+
+        if todaySummary.isSuccessDay {
+            return "Secured"
+        }
+
+        if todaySummary.open > 0 {
+            return "\(todaySummary.open) left"
+        }
+
+        if todaySummary.hasException {
+            return "Needs repair"
+        }
+
+        return "\(todaySummary.done)/\(todaySummary.scheduled)"
+    }
+
+    var todayActionText: String {
+        guard let todaySummary, todaySummary.scheduled > 0 else {
+            return "Nothing scheduled today."
+        }
+
+        if todaySummary.isSuccessDay {
+            return "Your streak is protected today."
+        }
+
+        if todaySummary.open > 0 {
+            return "Finish open routines to keep the streak."
+        }
+
+        if todaySummary.hasException {
+            return "Review what broke the routine."
+        }
+
+        return "Keep today's plan moving."
+    }
+
+    var activeDays: Int {
+        days.filter { $0.scheduled > 0 }.count
+    }
+
     var plannedRoutineMinutes: Int {
         scheduledOccurrences.reduce(0) { $0 + $1.minutes }
     }
@@ -562,6 +764,18 @@ private struct StreakStats {
     var completedRoutineMinutes: Int {
         scheduledOccurrences
             .filter { $0.status == .done }
+            .reduce(0) { $0 + $1.minutes }
+    }
+
+    var exceptionRoutineMinutes: Int {
+        scheduledOccurrences
+            .filter { $0.status == .skipped || $0.status == .missed }
+            .reduce(0) { $0 + $1.minutes }
+    }
+
+    var openRoutineMinutes: Int {
+        scheduledOccurrences
+            .filter { $0.status == .open }
             .reduce(0) { $0 + $1.minutes }
     }
 
@@ -578,17 +792,148 @@ private struct StreakStats {
         completedRoutineMinutes.readableDuration
     }
 
-    var weeklyRoutineLabelTotalText: String {
-        let completedMinutes = weeklyRoutineLabelSummaries.reduce(0) { $0 + $1.completedMinutes }
-        let targetMinutes = weeklyRoutineLabelSummaries.reduce(0) { $0 + $1.targetMinutes }
-        let plannedMinutes = weeklyRoutineLabelSummaries.reduce(0) { $0 + $1.plannedMinutes }
-        let denominator = targetMinutes > 0 ? targetMinutes : plannedMinutes
-        return "\(completedMinutes.readableDuration) / \(denominator.readableDuration)"
+    var exceptionRoutineTimeText: String {
+        exceptionRoutineMinutes.readableDuration
+    }
+
+    var openRoutineTimeText: String {
+        openRoutineMinutes.readableDuration
+    }
+
+    var routineLabelTotalText: String {
+        let completedMinutes = routineLabelTimeSummaries.reduce(0) { $0 + $1.completedMinutes }
+        let plannedMinutes = routineLabelTimeSummaries.reduce(0) { $0 + $1.plannedMinutes }
+        return "\(completedMinutes.readableDuration) / \(plannedMinutes.readableDuration)"
+    }
+
+    var labelInsightText: String {
+        guard let mostTime = routineLabelTimeSummaries.max(by: { $0.completedMinutes < $1.completedMinutes }) else {
+            return "Add labels to routines to see where your time goes."
+        }
+
+        if let weakest = routineLabelTimeSummaries
+            .filter({ $0.plannedMinutes > 0 && $0.failedMinutes > 0 })
+            .max(by: { $0.failedMinutes < $1.failedMinutes }) {
+            if mostTime.completedMinutes > 0 {
+                return "\(mostTime.label.title) has the most captured time. \(weakest.label.title) is where the most time was lost."
+            }
+
+            return "\(weakest.label.title) is where the most planned time was lost."
+        }
+
+        if mostTime.completedMinutes > 0 {
+            return "\(mostTime.label.title) has the most captured time this period."
+        }
+
+        guard let mostPlanned = routineLabelTimeSummaries.max(by: { $0.plannedMinutes < $1.plannedMinutes }) else {
+            return "Add labels to routines to see where your time goes."
+        }
+
+        return "\(mostPlanned.label.title) has the most planned time this period."
+    }
+
+    var controlStateTitle: String {
+        if plannedRoutineMinutes == 0 {
+            return "Idle"
+        }
+
+        if openRoutines > 0 {
+            return "Live"
+        }
+
+        if exceptionRoutines > 0 {
+            return "Exception"
+        }
+
+        return "Stable"
+    }
+
+    var controlStateSymbol: String {
+        switch controlStateTitle {
+        case "Live": "dot.radiowaves.left.and.right"
+        case "Exception": "exclamationmark.triangle.fill"
+        case "Stable": "checkmark.seal.fill"
+        default: "circle.dashed"
+        }
+    }
+
+    var controlStateTint: Color {
+        switch controlStateTitle {
+        case "Live":
+            MissionTheme.info
+        case "Exception":
+            MissionTheme.danger
+        case "Stable":
+            MissionTheme.success
+        default:
+            TaskListPalette.tertiaryText
+        }
     }
 
     var failReasonTotalText: String {
         let minutes = failReasonSummaries.reduce(0) { $0 + $1.minutes }
         return minutes.readableDuration
+    }
+
+    func drillDownRows(for label: RoutineLabelOption) -> [StreakDrillDownRow] {
+        scheduledOccurrences
+            .filter { $0.label?.rawValue == label.rawValue }
+            .sorted { $0.date > $1.date }
+            .map(StreakDrillDownRow.init(occurrence:))
+    }
+
+    func drillDownRows(for summary: RoutineFailReasonSummary) -> [StreakDrillDownRow] {
+        scheduledOccurrences
+            .filter { $0.status == .skipped && $0.failReason == summary.reason }
+            .sorted { $0.date > $1.date }
+            .map(StreakDrillDownRow.init(occurrence:))
+    }
+
+    func drillDownRows(for day: StreakDaySummary) -> [StreakDrillDownRow] {
+        scheduledOccurrences
+            .filter { Calendar.current.isDate($0.date, inSameDayAs: day.date) }
+            .sorted { $0.title < $1.title }
+            .map(StreakDrillDownRow.init(occurrence:))
+    }
+
+    func drillDownRows(for metric: StreakMetricDrillDown) -> [StreakDrillDownRow] {
+        switch metric {
+        case .success:
+            return scheduledOccurrences
+                .filter { $0.status == .done }
+                .sorted { $0.date > $1.date }
+                .map(StreakDrillDownRow.init(occurrence:))
+        case .exceptions:
+            return scheduledOccurrences
+                .filter { $0.status == .skipped || $0.status == .missed }
+                .sorted { $0.date > $1.date }
+                .map(StreakDrillDownRow.init(occurrence:))
+        }
+    }
+
+    func activeDayRows() -> [StreakDrillDownRow] {
+        days
+            .filter { $0.scheduled > 0 }
+            .sorted { $0.date > $1.date }
+            .map { day in
+                StreakDrillDownRow(
+                    id: "day-\(day.date.timeIntervalSince1970)",
+                    title: day.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()),
+                    detail: day.timeText,
+                    status: day.statusText
+                )
+            }
+    }
+
+    func completedTaskRows() -> [StreakDrillDownRow] {
+        completedTasks.map { task in
+            StreakDrillDownRow(
+                id: "task-\(task.id.uuidString)",
+                title: task.title,
+                detail: (task.completedAt ?? task.createdAt).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()),
+                status: "Task"
+            )
+        }
     }
 
     private static func dates(from start: Date, to end: Date, calendar: Calendar) -> [Date] {
@@ -606,16 +951,42 @@ private struct StreakStats {
         return dates
     }
 
-    private static func isRoutine(_ routine: ScheduleItem, scheduledOn date: Date, calendar: Calendar) -> Bool {
-        guard routine.isRoutineActive(on: date, calendar: calendar) else {
-            return false
+    private static func occurrence(
+        for routine: ScheduleItem,
+        on date: Date,
+        todayStart: Date,
+        customRoutineLabels: [CustomRoutineLabel],
+        stateLookup: RoutineOccurrenceStateLookup,
+        calendar: Calendar,
+        idPrefix: String? = nil
+    ) -> StreakRoutineOccurrence {
+        let state = stateLookup.state(for: routine, on: date)
+        let effectiveStatus: StreakOccurrenceStatus
+        switch state?.status ?? .pending {
+        case .done:
+            effectiveStatus = .done
+        case .skipped:
+            effectiveStatus = .skipped
+        case .pending:
+            effectiveStatus = date < todayStart ? .missed : .open
         }
 
-        if let taskDate = routine.taskDate {
-            return calendar.isDate(taskDate, inSameDayAs: date)
-        }
+        let idComponents = [
+            idPrefix,
+            routine.id.uuidString,
+            date.timeIntervalSince1970.description
+        ].compactMap(\.self)
 
-        return routine.repeats(on: date, calendar: calendar)
+        return StreakRoutineOccurrence(
+            id: idComponents.joined(separator: "-"),
+            routineID: routine.id,
+            title: routine.title,
+            label: RoutineLabelOption.option(for: routine.routineLabelRawValue, customLabels: customRoutineLabels),
+            date: date,
+            status: effectiveStatus,
+            failReason: state?.failReason,
+            minutes: max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
+        )
     }
 
     private static func failReasonSummaries(from occurrences: [StreakRoutineOccurrence]) -> [RoutineFailReasonSummary] {
@@ -648,6 +1019,9 @@ private struct StreakDaySummary: Identifiable {
     let skipped: Int
     let missed: Int
     let open: Int
+    let plannedMinutes: Int
+    let doneMinutes: Int
+    let exceptionMinutes: Int
 
     init(date: Date, occurrences: [StreakRoutineOccurrence], calendar: Calendar) {
         self.id = calendar.startOfDay(for: date)
@@ -657,10 +1031,26 @@ private struct StreakDaySummary: Identifiable {
         self.skipped = occurrences.filter { $0.status == .skipped }.count
         self.missed = occurrences.filter { $0.status == .missed }.count
         self.open = occurrences.filter { $0.status == .open }.count
+        self.plannedMinutes = occurrences.reduce(0) { $0 + $1.minutes }
+        self.doneMinutes = occurrences
+            .filter { $0.status == .done }
+            .reduce(0) { $0 + $1.minutes }
+        self.exceptionMinutes = occurrences
+            .filter { $0.status == .skipped || $0.status == .missed }
+            .reduce(0) { $0 + $1.minutes }
     }
 
     var isSuccessDay: Bool {
         scheduled > 0 && done == scheduled
+    }
+
+    var completionFraction: Double {
+        guard plannedMinutes > 0 else { return 0 }
+        return min(1, Double(doneMinutes) / Double(plannedMinutes))
+    }
+
+    var hasException: Bool {
+        skipped > 0 || missed > 0
     }
 
     var statusText: String {
@@ -671,17 +1061,61 @@ private struct StreakDaySummary: Identifiable {
         if skipped > 0 { return "\(skipped) skipped" }
         return "\(done)/\(scheduled)"
     }
+
+    var timeText: String {
+        if plannedMinutes == 0 { return "0m" }
+        return "\(doneMinutes.readableDuration) / \(plannedMinutes.readableDuration)"
+    }
+}
+
+private struct RoutineOccurrenceStateLookup {
+    private struct Key: Hashable {
+        let routineID: UUID
+        let dayStart: Date
+    }
+
+    private let statesByRoutineAndDay: [Key: RoutineOccurrenceState]
+    private let calendar: Calendar
+
+    init(states: [RoutineOccurrenceState], calendar: Calendar) {
+        self.calendar = calendar
+        self.statesByRoutineAndDay = Dictionary(
+            states.map { (Key(routineID: $0.routineID, dayStart: calendar.startOfDay(for: $0.dayStart)), $0) },
+            uniquingKeysWith: { lhs, rhs in
+                lhs.updatedAt >= rhs.updatedAt ? lhs : rhs
+            }
+        )
+    }
+
+    func state(for routine: ScheduleItem, on date: Date) -> RoutineOccurrenceState? {
+        statesByRoutineAndDay[
+            Key(routineID: routine.id, dayStart: calendar.startOfDay(for: date))
+        ]
+    }
 }
 
 private struct StreakRoutineOccurrence: Identifiable {
     let id: String
     let routineID: UUID
     let title: String
-    let label: RoutineLabel?
+    let label: RoutineLabelOption?
     let date: Date
     let status: StreakOccurrenceStatus
     let failReason: RoutineFailReason?
     let minutes: Int
+
+    var statusText: String {
+        switch status {
+        case .done:
+            "Done"
+        case .skipped:
+            failReason?.title ?? "Failed"
+        case .missed:
+            "Missed"
+        case .open:
+            "Open"
+        }
+    }
 }
 
 private struct RoutineFailReasonSummary: Identifiable {
@@ -703,21 +1137,18 @@ private struct RoutineFailReasonSummary: Identifiable {
 }
 
 private struct RoutineLabelTimeSummary: Identifiable {
-    let label: RoutineLabel
+    let label: RoutineLabelOption
     let plannedMinutes: Int
     let completedMinutes: Int
     let failedMinutes: Int
-    let targetMinutes: Int
-    let expectedMinutes: Int
 
     var id: String { label.rawValue }
 
     init(
-        label: RoutineLabel,
+        label: RoutineLabelOption,
         plannedMinutes: Int,
         completedMinutes: Int,
         failedMinutes: Int,
-        targetMinutes: Int,
         periodStart: Date,
         periodEnd: Date,
         now: Date,
@@ -727,15 +1158,10 @@ private struct RoutineLabelTimeSummary: Identifiable {
         self.plannedMinutes = plannedMinutes
         self.completedMinutes = completedMinutes
         self.failedMinutes = failedMinutes
-        self.targetMinutes = targetMinutes
-
-        let elapsed = max(0, min(now.timeIntervalSince(periodStart), periodEnd.timeIntervalSince(periodStart)))
-        let duration = max(1, periodEnd.timeIntervalSince(periodStart))
-        self.expectedMinutes = Int((Double(targetMinutes) * elapsed / duration).rounded())
     }
 
     var denominatorMinutes: Int {
-        targetMinutes > 0 ? targetMinutes : plannedMinutes
+        plannedMinutes
     }
 
     var remainingMinutes: Int {
@@ -747,45 +1173,49 @@ private struct RoutineLabelTimeSummary: Identifiable {
         return min(1, Double(completedMinutes) / Double(denominatorMinutes))
     }
 
+    var failureFraction: Double {
+        guard denominatorMinutes > 0 else { return 0 }
+        return min(1, Double(failedMinutes) / Double(denominatorMinutes))
+    }
+
+    var successRateText: String {
+        guard plannedMinutes > 0 else { return "0%" }
+        return "\(Int((fraction * 100).rounded()))%"
+    }
+
+    var failureRateText: String {
+        guard plannedMinutes > 0 else { return "0%" }
+        return "\(Int((failureFraction * 100).rounded()))%"
+    }
+
     var detailText: String {
-        let targetText = targetMinutes > 0 ? "Target \(targetMinutes.readableDuration)" : "Plan \(plannedMinutes.readableDuration)"
-        return "\(targetText) · Left \(remainingMinutes.readableDuration)"
+        "Planned \(plannedMinutes.readableDuration) · Left \(remainingMinutes.readableDuration)"
     }
 
     var outcomeText: String {
-        "S \(completedMinutes.readableDuration) · F \(failedMinutes.readableDuration)"
+        "\(completedMinutes.readableDuration) spent"
     }
 
     var status: RoutineLabelControlStatus {
-        if targetMinutes == 0 {
-            return plannedMinutes > 0 ? .tracked : .idle
+        if plannedMinutes == 0 {
+            return .idle
         }
 
-        if completedMinutes >= targetMinutes {
+        if completedMinutes >= plannedMinutes {
             return .onTrack
         }
 
-        if plannedMinutes == 0 && completedMinutes == 0 {
-            return .neglected
-        }
-
-        if plannedMinutes > targetMinutes + max(60, targetMinutes / 4) {
-            return .overloaded
-        }
-
-        if completedMinutes + RoutineLabelTargetStore.targetStepMinutes < expectedMinutes || failedMinutes > completedMinutes {
+        if failedMinutes > 0 {
             return .behind
         }
 
-        return .onTrack
+        return .tracked
     }
 }
 
 private enum RoutineLabelControlStatus: Equatable {
     case onTrack
     case behind
-    case overloaded
-    case neglected
     case tracked
     case idle
 
@@ -793,8 +1223,6 @@ private enum RoutineLabelControlStatus: Equatable {
         switch self {
         case .onTrack: "On Track"
         case .behind: "Behind"
-        case .overloaded: "Overloaded"
-        case .neglected: "Neglected"
         case .tracked: "Tracked"
         case .idle: "Idle"
         }
@@ -808,32 +1236,51 @@ private enum StreakOccurrenceStatus {
     case open
 }
 
-private struct StreakMetricCard: View {
-    let title: String
-    let value: String
-    let detail: String
+private struct StreakTimeControlCard: View {
+    let stats: StreakStats
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(TaskListPalette.secondaryText)
-                .lineLimit(1)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Control status", systemImage: stats.controlStateSymbol)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(stats.controlStateTint)
+                        .lineLimit(1)
 
-            Text(value)
-                .font(.title2.weight(.semibold).monospacedDigit())
-                .foregroundStyle(TaskListPalette.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                    Text(stats.completedRoutineTimeText)
+                        .font(.system(size: 34, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(TaskListPalette.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
 
-            Text(detail)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(TaskListPalette.tertiaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.74)
+                    Text("of \(stats.plannedRoutineTimeText) planned")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(TaskListPalette.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Text(stats.controlStateTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(stats.controlStateTint)
+                    .lineLimit(1)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(stats.controlStateTint.opacity(0.12), in: Capsule(style: .continuous))
+            }
+
+            ProgressView(value: stats.completedTimeFraction)
+                .tint(stats.controlStateTint)
+
+            HStack(spacing: 8) {
+                StreakControlMetric(title: "Captured", value: stats.completedRoutineTimeText, tint: MissionTheme.success)
+                StreakControlMetric(title: "Lost", value: stats.exceptionRoutineTimeText, tint: MissionTheme.danger)
+                StreakControlMetric(title: "Live", value: stats.openRoutineTimeText, tint: MissionTheme.info)
+            }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -842,35 +1289,103 @@ private struct StreakMetricCard: View {
     }
 }
 
+private struct StreakControlMetric: View {
+    let title: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(TaskListPalette.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.76)
+
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 6, height: 6)
+
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(TaskListPalette.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(TaskListPalette.fill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct StreakMetricCard: View {
+    let title: String
+    let value: String
+    let detail: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(TaskListPalette.secondaryText)
+                    .lineLimit(1)
+
+                Text(value)
+                    .font(.title2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(TaskListPalette.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Text(detail)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(TaskListPalette.tertiaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .missionLiquidCard(cornerRadius: 14)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct StreakRoutineLabelTimeRow: View {
     let summary: RoutineLabelTimeSummary
 
     private var tint: Color {
-        switch summary.label {
-        case .study:
+        switch summary.label.rawValue {
+        case RoutineLabel.study.rawValue:
             MissionTheme.accent
-        case .coding:
+        case RoutineLabel.coding.rawValue:
             TaskListPalette.secondaryText
-        case .work:
+        case RoutineLabel.work.rawValue:
             TaskListPalette.primaryText
-        case .life:
+        case RoutineLabel.life.rawValue:
             TaskListPalette.primaryText
-        case .play:
-            TaskListPalette.tertiaryText
-        case .hobby:
+        case RoutineLabel.play.rawValue:
+            TaskListPalette.secondaryText
+        case RoutineLabel.hobby.rawValue:
             MissionTheme.secondaryText
-        case .rest:
+        case RoutineLabel.rest.rawValue:
             TaskListPalette.secondaryText
-        case .sleep:
-            Color(uiColor: .systemTeal)
-        case .health:
+        case RoutineLabel.sleep.rawValue:
+            TaskListPalette.secondaryText
+        case RoutineLabel.health.rawValue:
             MissionTheme.success
-        case .money:
-            Color(uiColor: .systemYellow)
-        case .admin:
+        case RoutineLabel.money.rawValue:
             TaskListPalette.secondaryText
-        case .social:
-            Color(uiColor: .systemBlue)
+        case RoutineLabel.admin.rawValue:
+            TaskListPalette.secondaryText
+        case RoutineLabel.social.rawValue:
+            TaskListPalette.secondaryText
+        default:
+            MissionTheme.accent
         }
     }
 
@@ -878,22 +1393,20 @@ private struct StreakRoutineLabelTimeRow: View {
         switch summary.status {
         case .onTrack, .tracked:
             MissionTheme.success
-        case .behind, .neglected:
+        case .behind:
             MissionTheme.danger
-        case .overloaded:
-            Color(uiColor: .systemOrange)
         case .idle:
-            TaskListPalette.tertiaryText
+            TaskListPalette.secondaryText
         }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .center, spacing: 10) {
                 RoutineLabelBadge(
                     label: summary.label,
                     fillsWidth: false,
-                    fixedWidth: 108,
+                    fixedWidth: 116,
                     font: .caption.weight(.semibold),
                     iconSize: 12,
                     height: 30,
@@ -902,26 +1415,38 @@ private struct StreakRoutineLabelTimeRow: View {
                     normalBackground: TaskListPalette.fill
                 )
 
-                Text(summary.status.title)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(statusTint)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(statusTint.opacity(0.12), in: Capsule(style: .continuous))
-
                 Spacer(minLength: 8)
 
                 Text(summary.outcomeText)
                     .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(TaskListPalette.secondaryText)
+                    .foregroundStyle(TaskListPalette.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
             }
 
-            ProgressView(value: summary.fraction)
-                .tint(summary.status == .idle ? tint : statusTint)
+            GeometryReader { proxy in
+                let width = proxy.size.width
+
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(TaskListPalette.fill)
+
+                    Capsule(style: .continuous)
+                        .fill(MissionTheme.danger.opacity(0.28))
+                        .frame(width: width * summary.failureFraction)
+
+                    Capsule(style: .continuous)
+                        .fill(summary.status == .idle ? tint : statusTint)
+                        .frame(width: width * summary.fraction)
+                }
+            }
+            .frame(height: 8)
+
+            HStack(spacing: 8) {
+                StreakLabelStatPill(title: "Success", value: summary.successRateText, tint: MissionTheme.success)
+                StreakLabelStatPill(title: "Failed", value: summary.failureRateText, tint: MissionTheme.danger)
+                Spacer(minLength: 0)
+            }
 
             Text(summary.detailText)
                 .font(.caption2.weight(.medium))
@@ -929,6 +1454,29 @@ private struct StreakRoutineLabelTimeRow: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.74)
         }
+    }
+}
+
+private struct StreakLabelStatPill: View {
+    let title: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(value)
+                .font(.caption2.weight(.bold).monospacedDigit())
+                .foregroundStyle(tint)
+                .lineLimit(1)
+
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(TaskListPalette.secondaryText)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(TaskListPalette.fill, in: Capsule(style: .continuous))
     }
 }
 
@@ -963,23 +1511,56 @@ private struct StreakFailReasonRow: View {
     }
 }
 
-private struct StreakDayRail: View {
+private struct StreakSignalMap: View {
     let days: [StreakDaySummary]
+    let mode: StreakPeriodMode
+    let onSelectDay: (StreakDaySummary) -> Void
+
+    private var calendar: Calendar {
+        var calendar = Calendar.current
+        calendar.firstWeekday = 1
+        return calendar
+    }
+
+    private var alignedDays: [StreakDaySummary?] {
+        guard let firstDay = days.first else {
+            return []
+        }
+
+        let firstWeekday = calendar.component(.weekday, from: firstDay.date)
+        let leadingBlanks = (firstWeekday - calendar.firstWeekday + 7) % 7
+        return Array(repeating: nil, count: leadingBlanks) + days.map(Optional.some)
+    }
+
+    private var title: String {
+        switch mode {
+        case .week:
+            "Weekly signal"
+        case .month:
+            "Monthly signal"
+        case .year:
+            "Annual signal"
+        }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Daily streak")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(TaskListPalette.primaryText)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(TaskListPalette.primaryText)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(days) { day in
-                        StreakDayCell(day: day)
-                    }
-                }
-                .padding(.vertical, 2)
+                Spacer(minLength: 8)
+
+                Text("\(days.filter { $0.isSuccessDay }.count) clean")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(TaskListPalette.secondaryText)
+                    .lineLimit(1)
             }
+
+            signalContent
+
+            StreakSignalLegend()
         }
         .padding(14)
         .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -988,47 +1569,216 @@ private struct StreakDayRail: View {
                 .stroke(TaskListPalette.separator.opacity(0.28), lineWidth: 0.5)
         }
     }
+
+    @ViewBuilder
+    private var signalContent: some View {
+        switch mode {
+        case .week:
+            HStack(spacing: 8) {
+                ForEach(days) { day in
+                    StreakSignalWeekCell(day: day) {
+                        onSelectDay(day)
+                    }
+                }
+            }
+        case .month:
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 7) {
+                ForEach(alignedDays.indices, id: \.self) { index in
+                    StreakSignalMonthCell(day: alignedDays[index], onSelectDay: onSelectDay)
+                }
+            }
+        case .year:
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHGrid(rows: Array(repeating: GridItem(.fixed(14), spacing: 4), count: 7), spacing: 4) {
+                    ForEach(alignedDays.indices, id: \.self) { index in
+                        StreakSignalYearCell(day: alignedDays[index], onSelectDay: onSelectDay)
+                    }
+                }
+                .frame(height: 122)
+                .padding(.vertical, 2)
+            }
+        }
+    }
 }
 
-private struct StreakDayCell: View {
+private struct StreakSignalWeekCell: View {
     let day: StreakDaySummary
+    let onSelect: () -> Void
 
-    private var fill: Color {
-        if day.isSuccessDay {
-            return MissionTheme.accent
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(spacing: 6) {
+                Text(day.date.formatted(.dateTime.weekday(.narrow)))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(TaskListPalette.tertiaryText)
+                    .lineLimit(1)
+
+                ZStack {
+                    Circle()
+                        .fill(StreakSignalColor.fill(for: day))
+                        .overlay {
+                            Circle()
+                                .stroke(StreakSignalColor.stroke(for: day), lineWidth: 0.75)
+                        }
+
+                    Text("\(Calendar.current.component(.day, from: day.date))")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(StreakSignalColor.foreground(for: day))
+                        .lineLimit(1)
+                }
+                .frame(width: 38, height: 38)
+
+                Text(day.timeText)
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundStyle(TaskListPalette.tertiaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
+                    .frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity)
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(day.date.formatted(.dateTime.weekday(.wide).month().day())), \(day.statusText), \(day.timeText)")
+    }
+}
 
+private struct StreakSignalMonthCell: View {
+    let day: StreakDaySummary?
+    let onSelectDay: (StreakDaySummary) -> Void
+
+    var body: some View {
+        Group {
+            if let day {
+                Button {
+                    onSelectDay(day)
+                } label: {
+                    VStack(spacing: 5) {
+                        Text("\(Calendar.current.component(.day, from: day.date))")
+                            .font(.caption2.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(TaskListPalette.secondaryText)
+                            .lineLimit(1)
+
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(StreakSignalColor.fill(for: day))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .stroke(StreakSignalColor.stroke(for: day), lineWidth: 0.5)
+                            }
+                            .frame(height: 12)
+                    }
+                    .frame(height: 34)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(day.date.formatted(.dateTime.month().day())), \(day.statusText), \(day.timeText)")
+            } else {
+                Color.clear
+                    .frame(height: 34)
+            }
+        }
+    }
+}
+
+private struct StreakSignalYearCell: View {
+    let day: StreakDaySummary?
+    let onSelectDay: (StreakDaySummary) -> Void
+
+    var body: some View {
+        Group {
+            if let day {
+                Button {
+                    onSelectDay(day)
+                } label: {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(StreakSignalColor.fill(for: day))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .stroke(StreakSignalColor.stroke(for: day), lineWidth: 0.5)
+                        }
+                        .frame(width: 14, height: 14)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(day.date.formatted(.dateTime.month().day())), \(day.statusText), \(day.timeText)")
+            } else {
+                Color.clear
+                    .frame(width: 14, height: 14)
+            }
+        }
+    }
+}
+
+private enum StreakSignalColor {
+    static func fill(for day: StreakDaySummary) -> Color {
         if day.scheduled == 0 {
             return Color(uiColor: .tertiarySystemFill)
         }
 
-        return Color(uiColor: .secondarySystemFill)
-    }
-
-    private var foreground: Color {
-        day.isSuccessDay ? MissionTheme.selectedText : TaskListPalette.secondaryText
-    }
-
-    var body: some View {
-        VStack(spacing: 6) {
-            Text(day.date.formatted(.dateTime.weekday(.narrow)))
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(TaskListPalette.tertiaryText)
-                .lineLimit(1)
-
-            Text("\(Calendar.current.component(.day, from: day.date))")
-                .font(.caption.weight(.semibold).monospacedDigit())
-                .foregroundStyle(foreground)
-                .frame(width: 34, height: 34)
-                .background(fill, in: Circle())
-
-            Text(day.statusText)
-                .font(.system(size: 9, weight: .medium, design: .rounded))
-                .foregroundStyle(TaskListPalette.tertiaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(width: 54)
+        if day.hasException {
+            return MissionTheme.danger.opacity(max(0.28, day.completionFraction * 0.45 + 0.28))
         }
+
+        if day.open > 0 {
+            return MissionTheme.info.opacity(max(0.22, day.completionFraction * 0.48 + 0.22))
+        }
+
+        if day.isSuccessDay {
+            return MissionTheme.success
+        }
+
+        return MissionTheme.accent.opacity(max(0.18, day.completionFraction * 0.54 + 0.18))
+    }
+
+    static func foreground(for day: StreakDaySummary) -> Color {
+        day.isSuccessDay ? MissionTheme.selectedText : TaskListPalette.primaryText
+    }
+
+    static func stroke(for day: StreakDaySummary) -> Color {
+        if day.scheduled == 0 {
+            return TaskListPalette.separator.opacity(0.34)
+        }
+
+        if day.hasException {
+            return MissionTheme.danger.opacity(0.34)
+        }
+
+        if day.open > 0 {
+            return MissionTheme.info.opacity(0.34)
+        }
+
+        if day.isSuccessDay {
+            return MissionTheme.success.opacity(0.44)
+        }
+
+        return TaskListPalette.separator.opacity(0.38)
+    }
+}
+
+private struct StreakSignalLegend: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            legendItem(title: "Captured", color: MissionTheme.success)
+            legendItem(title: "Live", color: MissionTheme.info)
+            legendItem(title: "Exception", color: MissionTheme.danger)
+            legendItem(title: "Idle", color: Color(uiColor: .tertiarySystemFill))
+        }
+    }
+
+    private func legendItem(title: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(color)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .stroke(TaskListPalette.separator.opacity(0.36), lineWidth: 0.5)
+                }
+                .frame(width: 9, height: 9)
+
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(TaskListPalette.tertiaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -1036,6 +1786,97 @@ private struct StreakHistoryRowData: Identifiable {
     let id: String
     let title: String
     let detail: String
+}
+
+private struct StreakDrillDown: Identifiable {
+    let id = UUID()
+    let title: String
+    let subtitle: String
+    let rows: [StreakDrillDownRow]
+}
+
+private struct StreakDrillDownRow: Identifiable {
+    let id: String
+    let title: String
+    let detail: String
+    let status: String
+
+    init(id: String, title: String, detail: String, status: String) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.status = status
+    }
+
+    init(occurrence: StreakRoutineOccurrence) {
+        let labelText = occurrence.label?.title
+        let dateText = occurrence.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        let durationText = occurrence.minutes.readableDuration
+        self.id = occurrence.id
+        self.title = occurrence.title
+        self.detail = [labelText, dateText, durationText]
+            .compactMap(\.self)
+            .joined(separator: " · ")
+        self.status = occurrence.statusText
+    }
+}
+
+private enum StreakMetricDrillDown {
+    case success
+    case exceptions
+}
+
+private struct StreakDrillDownView: View {
+    let drillDown: StreakDrillDown
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if drillDown.rows.isEmpty {
+                    Text("No records in this range")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(TaskListPalette.secondaryText)
+                        .listRowBackground(Color.clear)
+                } else {
+                    ForEach(drillDown.rows) { row in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(row.title)
+                                    .font(.body.weight(.medium))
+                                    .foregroundStyle(TaskListPalette.primaryText)
+                                    .lineLimit(1)
+
+                                Spacer(minLength: 8)
+
+                                Text(row.status)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(TaskListPalette.secondaryText)
+                                    .lineLimit(1)
+                            }
+
+                            Text(row.detail)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(TaskListPalette.secondaryText)
+                                .lineLimit(1)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .navigationTitle(drillDown.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Text(drillDown.subtitle)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(TaskListPalette.secondaryText)
+                    .lineLimit(1)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(MissionTheme.appBackground)
+            }
+        }
+    }
 }
 
 private struct StreakHistoryRow: View {

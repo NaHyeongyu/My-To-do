@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct CalendarControlHeader: View {
     let selectedDate: Date
@@ -45,10 +48,7 @@ struct CalendarControlHeader: View {
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 16)
-        .background(MissionTheme.panel)
-        .overlay(alignment: .bottom) {
-            TimelineDivider(color: MissionTheme.separator, opacity: 0.52)
-        }
+        .missionTimelineLiquidBand()
     }
 }
 
@@ -115,12 +115,20 @@ struct CalendarDayView: View {
     let startHour: Int
     let endHour: Int
     let onEdit: (ScheduleItem) -> Void
+    let onMove: (ScheduleItem, Int) -> Void
 
     private let calendar = Calendar.current
+    private let dragPressDuration: TimeInterval = 0.5
+    private let dragPressMaximumDistance: CGFloat = 28
+    private let dragSnapMinutes = 5
+    @State private var dragState: CalendarEventDragState?
 
     var body: some View {
         VStack(spacing: 0) {
             GeometryReader { proxy in
+                let timelineHeight = TimelineLayout.contentHeight(startHour: startHour, endHour: endHour)
+                let layouts = eventLayouts(width: proxy.size.width)
+
                 TimelineView(.periodic(from: .now, by: 60)) { timeline in
                     ZStack(alignment: .topLeading) {
                         TimelineHourLines(
@@ -133,22 +141,49 @@ struct CalendarDayView: View {
                             addsScrollTargets: true
                         )
 
-                        ForEach(eventLayouts(width: proxy.size.width)) { layout in
-                            CalendarEventBlock(
-                                item: layout.item,
-                                occurrenceState: routineStates.state(for: layout.item, on: date, calendar: calendar),
-                                isCompact: layout.isCompact
-                            ) {
-                                onEdit(layout.item)
-                            }
+                        ForEach(layouts) { layout in
+                            let occurrenceState = routineStates.state(for: layout.item, on: date, calendar: calendar)
+                            let activeDragState = dragState?.itemID == layout.item.id ? dragState : nil
+                            let isDragging = activeDragState != nil
+	                            CalendarEventBlock(
+	                                item: layout.item,
+	                                occurrenceState: occurrenceState,
+	                                plannedDurationMinutes: layout.item.plannedDurationMinutes(state: occurrenceState, calendar: calendar),
+	                                isCompact: layout.isCompact,
+	                                displayedTimeRangeText: activeDragState.map {
+	                                    dragTimeRangeText(
+	                                        startMinute: $0.startMinute,
+	                                        durationMinutes: layout.durationMinutes
+	                                    )
+	                                }
+	                            )
                             .frame(
                                 width: layout.width,
                                 height: layout.height
                             )
                             .offset(
                                 x: layout.x,
-                                y: layout.top
+                                y: activeDragState.map { TimelineLayout.eventTop(startMinute: $0.startMinute, startHour: startHour) } ?? layout.top
                             )
+                            .scaleEffect(isDragging ? 1.015 : 1)
+                            .shadow(color: .black.opacity(isDragging ? 0.16 : 0), radius: 12, x: 0, y: 6)
+                            .overlay(alignment: .topTrailing) {
+	                                if let activeDragState {
+	                                    CalendarEventDragBadge(
+	                                        text: dragTimeRangeText(
+	                                            startMinute: activeDragState.startMinute,
+	                                            durationMinutes: layout.durationMinutes
+	                                        )
+	                                    )
+	                                    .padding(.top, -28)
+	                                    .padding(.trailing, 2)
+	                                }
+                            }
+                            .zIndex(isDragging ? 10 : 0)
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityAction {
+                                onEdit(layout.item)
+                            }
                         }
 
                         if let currentTimeTop = currentTimeTop(for: timeline.date) {
@@ -158,12 +193,95 @@ struct CalendarDayView: View {
                             .offset(y: TimelineLayout.topContentInset + currentTimeTop - CalendarCurrentTimeIndicator.verticalCenterOffset)
                             .id(CalendarLayout.currentTimeID)
                         }
+
+                        CalendarTimelineGestureOverlay(
+                            layouts: layouts,
+                            minimumPressDuration: dragPressDuration,
+                            allowableMovement: dragPressMaximumDistance,
+                            onTap: { layout in
+                                onEdit(layout.item)
+                            },
+                            onLongPressBegan: { layout in
+                                activateDrag(for: layout, translation: 0)
+                            },
+                            onLongPressChanged: { layout, translation in
+                                updateDragState(for: layout, translation: translation)
+                            },
+                            onLongPressEnded: { layout, translation in
+                                finishDrag(for: layout, translation: translation)
+                            },
+                            onLongPressCancelled: { layout in
+                                cancelDrag(for: layout)
+                            }
+                        )
+                        .frame(width: proxy.size.width, height: timelineHeight)
+                        .zIndex(20)
                     }
                 }
             }
             .frame(height: TimelineLayout.contentHeight(startHour: startHour, endHour: endHour))
         }
         .background(MissionTheme.panel)
+    }
+
+    private func finishDrag(for layout: TimelineEventLayout, translation: CGFloat) {
+        let finalStartMinute = proposedStartMinute(for: layout, translation: translation)
+        if finalStartMinute != layout.startMinute {
+            onMove(layout.item, finalStartMinute)
+        }
+
+        withAnimation(.snappy(duration: 0.16)) {
+            dragState = nil
+        }
+    }
+
+    private func cancelDrag(for layout: TimelineEventLayout) {
+        if dragState?.itemID == layout.item.id {
+            withAnimation(.snappy(duration: 0.16)) {
+                dragState = nil
+            }
+        }
+    }
+
+    private func activateDrag(for layout: TimelineEventLayout, translation: CGFloat) {
+        updateDragState(for: layout, translation: translation)
+        CalendarEventHaptics.dragBegan()
+    }
+
+    private func updateDragState(for layout: TimelineEventLayout, translation: CGFloat) {
+        let nextState = CalendarEventDragState(
+            itemID: layout.item.id,
+            startMinute: proposedStartMinute(for: layout, translation: translation)
+        )
+
+        if dragState != nextState {
+            dragState = nextState
+        }
+    }
+
+	    private func proposedStartMinute(for layout: TimelineEventLayout, translation: CGFloat) -> Int {
+	        let deltaMinutes = Double(translation / TimelineLayout.hourHeight * 60)
+	        let snappedDeltaMinutes = Int((deltaMinutes / Double(dragSnapMinutes)).rounded(.toNearestOrAwayFromZero)) * dragSnapMinutes
+	        let latestStartMinute = max(0, ScheduleItem.minutesPerDay - max(5, layout.durationMinutes))
+
+	        return min(latestStartMinute, max(0, layout.startMinute + snappedDeltaMinutes))
+	    }
+
+	    private func dragTimeRangeText(startMinute: Int, durationMinutes: Int) -> String {
+	        let endMinute = startMinute + max(1, durationMinutes)
+	        let suffix = endMinute >= ScheduleItem.minutesPerDay ? " +1d" : ""
+	        return "\(timeText(for: startMinute)) - \(timeText(for: endMinute))\(suffix)"
+	    }
+
+	    private func timeText(for minute: Int) -> String {
+	        let normalizedMinute = ((minute % ScheduleItem.minutesPerDay) + ScheduleItem.minutesPerDay) % ScheduleItem.minutesPerDay
+	        let hour = normalizedMinute / 60
+        let minute = normalizedMinute % 60
+        var components = calendar.dateComponents([.year, .month, .day], from: date)
+        components.hour = hour
+        components.minute = minute
+
+        return calendar.date(from: components)?.formatted(.dateTime.hour().minute()) ?? ""
     }
 
     private func currentTimeTop(for now: Date) -> CGFloat? {
@@ -180,12 +298,274 @@ struct CalendarDayView: View {
             in: width,
             startHour: startHour,
             calendar: calendar,
-            fallbackDate: date
+            fallbackDate: date,
+            durationMinutes: { routine in
+                let state = routineStates.state(for: routine, on: date, calendar: calendar)
+                return max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
+            }
         ) { routine in
             routineStates.state(for: routine, on: date, calendar: calendar)?.delayMinutes ?? 0
         }
     }
 }
+
+private struct CalendarEventDragState: Equatable {
+    let itemID: UUID
+    let startMinute: Int
+}
+
+private enum CalendarEventHaptics {
+    static func dragBegan() {
+        #if canImport(UIKit)
+        Task { @MainActor in
+            UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.75)
+        }
+        #endif
+    }
+}
+
+#if canImport(UIKit)
+private struct CalendarTimelineGestureOverlay: UIViewRepresentable {
+    let layouts: [TimelineEventLayout]
+    let minimumPressDuration: TimeInterval
+    let allowableMovement: CGFloat
+    let onTap: (TimelineEventLayout) -> Void
+    let onLongPressBegan: (TimelineEventLayout) -> Void
+    let onLongPressChanged: (TimelineEventLayout, CGFloat) -> Void
+    let onLongPressEnded: (TimelineEventLayout, CGFloat) -> Void
+    let onLongPressCancelled: (TimelineEventLayout) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = true
+
+        let gesture = CalendarTimelineEventGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleTimelineGesture(_:))
+        )
+        gesture.layouts = layouts
+        gesture.minimumPressDuration = minimumPressDuration
+        gesture.allowableMovement = allowableMovement
+        gesture.cancelsTouchesInView = true
+        view.addGestureRecognizer(gesture)
+
+        context.coordinator.timelineGestureRecognizer = gesture
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.timelineGestureRecognizer?.layouts = layouts
+        context.coordinator.timelineGestureRecognizer?.minimumPressDuration = minimumPressDuration
+        context.coordinator.timelineGestureRecognizer?.allowableMovement = allowableMovement
+    }
+
+    final class Coordinator: NSObject {
+        var parent: CalendarTimelineGestureOverlay
+        weak var timelineGestureRecognizer: CalendarTimelineEventGestureRecognizer?
+
+        init(parent: CalendarTimelineGestureOverlay) {
+            self.parent = parent
+        }
+
+        @MainActor @objc func handleTimelineGesture(_ recognizer: CalendarTimelineEventGestureRecognizer) {
+            guard let layout = recognizer.activeLayout else {
+                return
+            }
+
+            switch recognizer.timelineState {
+            case .tap:
+                parent.onTap(layout)
+            case .dragBegan:
+                parent.onLongPressBegan(layout)
+            case .dragChanged:
+                parent.onLongPressChanged(layout, recognizer.translationY)
+            case .dragEnded:
+                parent.onLongPressEnded(layout, recognizer.translationY)
+            case .dragCancelled:
+                parent.onLongPressCancelled(layout)
+            case nil:
+                break
+            }
+        }
+    }
+}
+
+private final class CalendarTimelineEventGestureRecognizer: UIGestureRecognizer {
+    enum TimelineState {
+        case tap
+        case dragBegan
+        case dragChanged
+        case dragEnded
+        case dragCancelled
+    }
+
+    var layouts: [TimelineEventLayout] = []
+    var minimumPressDuration: TimeInterval = 1
+    var allowableMovement: CGFloat = 28
+
+    private var startLocation: CGPoint?
+    private var currentLocation: CGPoint?
+    private var selectedLayout: TimelineEventLayout?
+    private var pressWorkItem: DispatchWorkItem?
+
+    private(set) var timelineState: TimelineState?
+
+    var activeLayout: TimelineEventLayout? {
+        selectedLayout
+    }
+
+    var translationY: CGFloat {
+        guard let startLocation, let currentLocation else {
+            return 0
+        }
+
+        return currentLocation.y - startLocation.y
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard state == .possible, touches.count == 1, let touch = touches.first, let view else {
+            state = .failed
+            return
+        }
+
+        let location = touch.location(in: view)
+        guard let layout = layout(at: location) else {
+            state = .failed
+            return
+        }
+
+        selectedLayout = layout
+        startLocation = location
+        currentLocation = location
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.state == .possible else {
+                return
+            }
+
+            self.timelineState = .dragBegan
+            self.state = .began
+        }
+
+        pressWorkItem = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + .milliseconds(Int(minimumPressDuration * 1000)),
+            execute: workItem
+        )
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let touch = touches.first, let view, let startLocation else {
+            state = .failed
+            return
+        }
+
+        let location = touch.location(in: view)
+        currentLocation = location
+
+        switch state {
+        case .possible:
+            let distance = hypot(location.x - startLocation.x, location.y - startLocation.y)
+            if distance > allowableMovement {
+                state = .failed
+            }
+        case .began, .changed:
+            timelineState = .dragChanged
+            state = .changed
+        default:
+            break
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        switch state {
+        case .possible:
+            timelineState = .tap
+            state = .ended
+        case .began, .changed:
+            timelineState = .dragEnded
+            state = .ended
+        default:
+            state = .failed
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        if state == .began || state == .changed {
+            timelineState = .dragCancelled
+        }
+
+        state = .cancelled
+    }
+
+    override func reset() {
+        pressWorkItem?.cancel()
+        pressWorkItem = nil
+        startLocation = nil
+        currentLocation = nil
+        selectedLayout = nil
+        timelineState = nil
+    }
+
+    private func layout(at point: CGPoint) -> TimelineEventLayout? {
+        layouts.reversed().first { layout in
+            CGRect(
+                x: layout.x,
+                y: layout.top,
+                width: layout.width,
+                height: layout.height
+            )
+            .insetBy(dx: -2, dy: -4)
+            .contains(point)
+        }
+    }
+}
+#else
+private struct CalendarTimelineGestureOverlay: View {
+    let layouts: [TimelineEventLayout]
+    let minimumPressDuration: TimeInterval
+    let allowableMovement: CGFloat
+    let onTap: (TimelineEventLayout) -> Void
+    let onLongPressBegan: (TimelineEventLayout) -> Void
+    let onLongPressChanged: (TimelineEventLayout, CGFloat) -> Void
+    let onLongPressEnded: (TimelineEventLayout, CGFloat) -> Void
+    let onLongPressCancelled: (TimelineEventLayout) -> Void
+
+    var body: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onEnded { value in
+                        guard value.translation == .zero, let layout = layout(at: value.location) else {
+                            return
+                        }
+
+                        onTap(layout)
+                    }
+            )
+    }
+
+    private func layout(at point: CGPoint) -> TimelineEventLayout? {
+        layouts.reversed().first { layout in
+            CGRect(
+                x: layout.x,
+                y: layout.top,
+                width: layout.width,
+                height: layout.height
+            )
+            .insetBy(dx: -2, dy: -4)
+            .contains(point)
+        }
+    }
+}
+#endif
 
 private struct CalendarCurrentTimeIndicator: View {
     static let verticalCenterOffset: CGFloat = 11
@@ -218,10 +598,27 @@ private struct CalendarCurrentTimeIndicator: View {
     }
 }
 
+private struct CalendarEventDragBadge: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.semibold).monospacedDigit())
+            .foregroundStyle(MissionTheme.selectedText)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(MissionTheme.selection, in: Capsule(style: .continuous))
+            .shadow(color: .black.opacity(0.14), radius: 8, x: 0, y: 4)
+    }
+}
+
 struct CalendarMonthView: View {
     let selectedDate: Date
     let monthDays: [Date?]
     let items: [ScheduleItem]
+    let routineStates: [RoutineOccurrenceState]
     let onSelectDate: (Date) -> Void
 
     private let calendar = Calendar.current
@@ -254,7 +651,7 @@ struct CalendarMonthView: View {
                     if let date {
                         CalendarMonthDayCell(
                             date: date,
-                            routines: items.routines(on: date, calendar: calendar),
+                            routines: items.routines(on: date, routineStates: routineStates, calendar: calendar),
                             isSelected: calendar.isDate(date, inSameDayAs: selectedDate),
                             isToday: calendar.isDateInToday(date)
                         ) {
@@ -311,7 +708,7 @@ private struct CalendarMonthDayCell: View {
                 TimelineDivider(color: MissionTheme.separator, opacity: 0.28)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CalendarMonthDayButtonStyle())
     }
 
     @ViewBuilder
@@ -326,9 +723,11 @@ private struct CalendarMonthDayCell: View {
                         .fill(MissionTheme.selection)
                 } else if isToday {
                     Circle()
-                        .stroke(MissionTheme.selection.opacity(0.72), lineWidth: 1)
+                        .stroke(MissionTheme.selection.opacity(0.42), lineWidth: 0.5)
                 }
             }
+            .scaleEffect(isSelected ? 1.06 : 1)
+            .animation(.snappy(duration: 0.18), value: isSelected)
     }
 
     private var dayTextColor: Color {
@@ -337,6 +736,18 @@ private struct CalendarMonthDayCell: View {
         }
 
         return isToday ? MissionTheme.accent : MissionTheme.graphite
+    }
+}
+
+private struct CalendarMonthDayButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(configuration.isPressed ? MissionTheme.controlFill.opacity(0.72) : Color.clear)
+            }
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .animation(.snappy(duration: 0.14), value: configuration.isPressed)
     }
 }
 
@@ -373,47 +784,46 @@ private enum CalendarMonthLayout {
     static let cellHeight: CGFloat = 112
 }
 
-private struct CalendarEventBlock: View {
-    let item: ScheduleItem
-    let occurrenceState: RoutineOccurrenceState?
-    let isCompact: Bool
-    let onEdit: () -> Void
+	private struct CalendarEventBlock: View {
+	    let item: ScheduleItem
+	    let occurrenceState: RoutineOccurrenceState?
+	    let plannedDurationMinutes: Int
+	    let isCompact: Bool
+	    let displayedTimeRangeText: String?
 
-    private var timeRangeText: String {
-        item.timeRangeText()
-    }
+	    private let calendar = Calendar.current
+
+	    private var timeRangeText: String {
+	        displayedTimeRangeText ?? item.timeRangeText(durationMinutes: plannedDurationMinutes, calendar: calendar)
+	    }
 
     private var status: RoutineOccurrenceStatus {
         occurrenceState?.status ?? .pending
     }
 
+    private var selectedVersion: RoutineVersion? {
+        item.routineVersion(for: occurrenceState?.routineVersionID, calendar: calendar)
+    }
+
     var body: some View {
-        Button(action: onEdit) {
-            ViewThatFits(in: .vertical) {
-                fullContent
-                compactContent
-            }
-            .padding(.vertical, isCompact ? 5 : 7)
-            .padding(.leading, status.isResolved ? 12 : (isCompact ? 7 : 9))
-            .padding(.trailing, showsStatusBadge ? 24 : (isCompact ? 7 : 9))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(eventBackground, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-            .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(statusTint.opacity(status.isResolved ? 0.92 : 0.58))
-                    .frame(width: 3)
-                    .padding(.vertical, 7)
-            }
-            .overlay(alignment: .topTrailing) {
-                if showsStatusBadge {
-                    statusBadge
-                        .padding(.top, 5)
-                        .padding(.trailing, 6)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        ViewThatFits(in: .vertical) {
+            fullContent
+            compactContent
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, isCompact ? 5 : 7)
+        .padding(.leading, status.isResolved ? 12 : (isCompact ? 7 : 9))
+        .padding(.trailing, showsStatusBadge ? 24 : (isCompact ? 7 : 9))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(eventBackground, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .overlay(alignment: .topTrailing) {
+            if showsStatusBadge {
+                statusBadge
+                    .padding(.top, 5)
+                    .padding(.trailing, 6)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         .accessibilityLabel("\(item.title), \(status.title), \(timeRangeText)")
     }
 
@@ -422,6 +832,14 @@ private struct CalendarEventBlock: View {
             titleRow
 
             timeText
+
+            if let selectedVersion {
+                Text(selectedVersion.title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(eventSecondaryForeground)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.64)
+            }
         }
     }
 
@@ -454,8 +872,8 @@ private struct CalendarEventBlock: View {
 
     private var timeText: some View {
         Text(timeRangeText)
-            .font(.caption2.weight(.medium).monospacedDigit())
-            .foregroundStyle(MissionTheme.secondaryText)
+            .font(.caption2.weight(.semibold).monospacedDigit())
+            .foregroundStyle(eventForeground)
             .lineLimit(1)
             .minimumScaleFactor(0.64)
             .allowsTightening(true)
@@ -470,7 +888,7 @@ private struct CalendarEventBlock: View {
             .font(.caption2.weight(.semibold))
             .foregroundStyle(statusTint)
             .frame(width: 16, height: 16)
-            .background(MissionTheme.panel.opacity(0.82), in: Circle())
+            .background(MissionTheme.elevatedPanel, in: Circle())
     }
 
     private var eventBackground: Color {
@@ -478,9 +896,9 @@ private struct CalendarEventBlock: View {
         case .pending:
             MissionTheme.eventBackground
         case .done:
-            MissionTheme.success.opacity(0.18)
+            MissionTheme.successSoft
         case .skipped:
-            MissionTheme.danger.opacity(0.18)
+            MissionTheme.dangerSoft
         }
     }
 
@@ -493,10 +911,19 @@ private struct CalendarEventBlock: View {
         }
     }
 
+    private var eventSecondaryForeground: Color {
+        switch status {
+        case .pending:
+            MissionTheme.eventSecondaryForeground
+        case .done, .skipped:
+            MissionTheme.secondaryText
+        }
+    }
+
     private var statusTint: Color {
         switch status {
         case .pending:
-            MissionTheme.secondaryText
+            MissionTheme.accent
         case .done:
             MissionTheme.success
         case .skipped:

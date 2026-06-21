@@ -83,9 +83,9 @@ enum WidgetRoutineOutcome: String, Codable, Hashable {
 
     var title: String {
         switch self {
-        case .pending: "Pending"
+        case .pending: "Open"
         case .success: "Success"
-        case .fail: "Fail"
+        case .fail: "Failed"
         }
     }
 

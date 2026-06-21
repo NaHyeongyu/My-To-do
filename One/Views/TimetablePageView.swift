@@ -1,21 +1,30 @@
+import SwiftData
 import SwiftUI
 
 struct TimetablePageView: View {
+    @Environment(\.modelContext) private var modelContext
+
     let items: [ScheduleItem]
     let routineStates: [RoutineOccurrenceState]
     let onAddRoutine: (Date) -> Void
-    let onEdit: (ScheduleItem) -> Void
+    let onEdit: (ScheduleItem, Date) -> Void
+    let onMoveRoutine: (ScheduleItem, Date, Int) -> Void
     let onMarkRoutineDone: (ScheduleItem, Date) -> Void
     let onSkipRoutine: (ScheduleItem, Date) -> Void
 
     @State private var selectedDate = Calendar.current.startOfDay(for: .now)
     @State private var viewMode: TimetableViewMode = TimetableViewMode.storedValue()
     @State private var calendarTurnDirection = 1
+    @State private var defersInitialTimelineScroll = false
+    @State private var skipsNextSelectedDateTimelineScroll = false
+    @State private var initialTimelineScrollWorkItem: DispatchWorkItem?
 
     private let calendar = Calendar.current
+    private let viewModeTransitionDuration = 0.16
+    private let deferredTimelineScrollDelay = 0.22
 
     private var routines: [ScheduleItem] {
-        items.routines(on: selectedDate, calendar: calendar)
+        items.routines(on: selectedDate, routineStates: routineStates, calendar: calendar)
     }
 
     private var calendarItems: [ScheduleItem] {
@@ -95,10 +104,13 @@ struct TimetablePageView: View {
     }
 
     private var missionSummary: CalendarMissionSummary {
-        let plannedMinutes = routines.reduce(0) { $0 + $1.durationMinutes(calendar: calendar) }
+        let plannedMinutes = routines.reduce(0) { total, routine in
+            let state = routineStates.state(for: routine, on: selectedDate, calendar: calendar)
+            return total + routine.plannedDurationMinutes(state: state, calendar: calendar)
+        }
         let completedMinutes = routines.reduce(0) { total, routine in
             let state = routineStates.state(for: routine, on: selectedDate, calendar: calendar)
-            return state?.status == .done ? total + routine.durationMinutes(calendar: calendar) : total
+            return state?.status == .done ? total + routine.plannedDurationMinutes(state: state, calendar: calendar) : total
         }
         let openTaskCount = items
             .oneOffTasksForToday(selectedDate, calendar: calendar)
@@ -150,88 +162,127 @@ struct TimetablePageView: View {
                     onSetViewMode: setViewMode
                 )
 
-                switch viewMode {
-                case .day:
-                    CalendarDayStrip(days: weekDays, selectedDate: selectedDay)
-                        .calendarPageTurn(for: selectedWeekStart, direction: calendarTurnDirection)
-                        .contentShape(Rectangle())
-                        .simultaneousGesture(
-                            swipeGesture(for: .week)
-                        )
-
-                    if showsTodayNowMode {
-                        TimelineView(.periodic(from: .now, by: 60)) { timeline in
-                            CalendarNowModeCard(
-                                candidate: nowCandidate(at: timeline.date),
-                                progress: routineProgress,
-                                summary: missionSummary,
-                                onAddRoutine: {
-                                    onAddRoutine(selectedDayStart)
-                                },
-                                onDone: {
-                                    onMarkRoutineDone($0, selectedDayStart)
-                                },
-                                onSkip: {
-                                    onSkipRoutine($0, selectedDayStart)
-                                }
-                            )
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 14)
-                        .padding(.bottom, 12)
-                        .background(MissionTheme.panel)
+                ZStack(alignment: .top) {
+                    switch viewMode {
+                    case .day:
+                        dayContent(proxy: proxy)
+                            .transition(.opacity)
+                    case .month:
+                        monthContent
+                            .transition(.opacity)
                     }
-
-                    ScrollView {
-                        CalendarDayView(
-                            date: selectedDate,
-                            routines: routines,
-                            routineStates: routineStates,
-                            startHour: dayStartHour,
-                            endHour: dayEndHour,
-                            onEdit: onEdit
-                        )
-                        .calendarPageTurn(for: selectedDayStart, direction: calendarTurnDirection)
-                        .padding(.bottom, scrollContentBottomPadding)
-                    }
-                    .simultaneousGesture(
-                        swipeGesture(for: .day)
-                    )
-                    .refreshable {
-                        returnToCurrentTime(proxy)
-                    }
-                    .background(MissionTheme.panel)
-                case .month:
-                    ScrollView {
-                        CalendarMonthView(
-                            selectedDate: selectedDate,
-                            monthDays: monthGridDays,
-                            items: calendarItems,
-                            onSelectDate: {
-                                setSelectedDate($0)
-                                setViewMode(.day)
-                            }
-                        )
-                        .contentShape(Rectangle())
-                        .simultaneousGesture(
-                            swipeGesture(for: .month)
-                        )
-                        .padding(.bottom, scrollContentBottomPadding)
-                    }
-                    .background(MissionTheme.panel)
                 }
+                .animation(.easeOut(duration: viewModeTransitionDuration), value: viewMode)
             }
             .background(MissionTheme.panel)
             .onAppear {
                 scrollToInitialTimelinePosition(proxy)
             }
             .onChange(of: selectedDate) { _, _ in
+                if skipsNextSelectedDateTimelineScroll {
+                    skipsNextSelectedDateTimelineScroll = false
+                    return
+                }
+
+                guard !defersInitialTimelineScroll else {
+                    return
+                }
+
                 scrollToInitialTimelinePosition(proxy)
             }
             .onChange(of: viewMode) { _, _ in
-                scrollToInitialTimelinePosition(proxy)
+                if defersInitialTimelineScroll, viewMode == .day {
+                    scrollToInitialTimelinePosition(
+                        proxy,
+                        animated: false,
+                        delay: deferredTimelineScrollDelay
+                    )
+                    defersInitialTimelineScroll = false
+                } else {
+                    scrollToInitialTimelinePosition(proxy)
+                }
             }
         }
+    }
+
+    private func dayContent(proxy: ScrollViewProxy) -> some View {
+        VStack(spacing: 0) {
+            CalendarDayStrip(days: weekDays, selectedDate: selectedDay)
+                .calendarPageTurn(for: selectedWeekStart, direction: calendarTurnDirection)
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    swipeGesture(for: .week)
+                )
+
+            if showsTodayNowMode {
+                TimelineView(.periodic(from: .now, by: 60)) { timeline in
+                    CalendarNowModeCard(
+                        candidate: nowCandidate(at: timeline.date),
+                        progress: routineProgress,
+                        summary: missionSummary,
+                        onAddRoutine: {
+                            onAddRoutine(selectedDayStart)
+                        },
+                        onDone: {
+                            onMarkRoutineDone($0, selectedDayStart)
+                        },
+                        onSkip: {
+                            onSkipRoutine($0, selectedDayStart)
+                        },
+                        onSelectVersion: { routine, version in
+                            selectRoutineVersion(version, for: routine, on: selectedDayStart)
+                        }
+                    )
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
+            }
+
+            ScrollView {
+                CalendarDayView(
+                    date: selectedDate,
+                    routines: routines,
+                    routineStates: routineStates,
+                    startHour: dayStartHour,
+                    endHour: dayEndHour,
+                    onEdit: { routine in
+                        onEdit(routine, selectedDayStart)
+                    },
+                    onMove: { routine, startMinute in
+                        onMoveRoutine(routine, selectedDayStart, startMinute)
+                    }
+                )
+                .calendarPageTurn(for: selectedDayStart, direction: calendarTurnDirection)
+                .padding(.bottom, scrollContentBottomPadding)
+            }
+            .simultaneousGesture(
+                swipeGesture(for: .day)
+            )
+            .refreshable {
+                returnToCurrentTime(proxy)
+            }
+            .background(MissionTheme.panel)
+        }
+        .background(MissionTheme.panel)
+    }
+
+    private var monthContent: some View {
+        ScrollView {
+            CalendarMonthView(
+                selectedDate: selectedDate,
+                monthDays: monthGridDays,
+                items: calendarItems,
+                routineStates: routineStates,
+                onSelectDate: selectDateFromMonth
+            )
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                swipeGesture(for: .month)
+            )
+            .padding(.bottom, scrollContentBottomPadding)
+        }
+        .background(MissionTheme.panel)
     }
 
     private func returnToCurrentTime(_ proxy: ScrollViewProxy) {
@@ -252,7 +303,11 @@ struct TimetablePageView: View {
         }
     }
 
-    private func scrollToInitialTimelinePosition(_ proxy: ScrollViewProxy) {
+    private func scrollToInitialTimelinePosition(
+        _ proxy: ScrollViewProxy,
+        animated: Bool = true,
+        delay: TimeInterval = 0
+    ) {
         guard viewMode != .month else {
             return
         }
@@ -260,10 +315,32 @@ struct TimetablePageView: View {
         let showsCurrentTime = calendar.isDateInToday(selectedDate)
         let targetID = showsCurrentTime ? CalendarLayout.currentTimeID : CalendarLayout.hourID(initialTimelineHour)
         let anchor: UnitPoint = showsCurrentTime ? .center : .top
+        let scrollAction = {
+            if animated {
+                withAnimation(.snappy(duration: 0.18)) {
+                    proxy.scrollTo(targetID, anchor: anchor)
+                }
+            } else {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    proxy.scrollTo(targetID, anchor: anchor)
+                }
+            }
+        }
 
-        DispatchQueue.main.async {
-            withAnimation(.snappy(duration: 0.18)) {
-                proxy.scrollTo(targetID, anchor: anchor)
+        initialTimelineScrollWorkItem?.cancel()
+
+        if delay > 0 {
+            let workItem = DispatchWorkItem(block: scrollAction)
+            initialTimelineScrollWorkItem = workItem
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + .milliseconds(Int(delay * 1000)),
+                execute: workItem
+            )
+        } else {
+            DispatchQueue.main.async {
+                scrollAction()
             }
         }
     }
@@ -280,8 +357,29 @@ struct TimetablePageView: View {
     }
 
     private func setViewMode(_ mode: TimetableViewMode) {
-        viewMode = mode
+        initialTimelineScrollWorkItem?.cancel()
+        defersInitialTimelineScroll = viewMode == .month && mode == .day
+
+        withAnimation(.easeOut(duration: viewModeTransitionDuration)) {
+            viewMode = mode
+        }
+
         UserDefaults.standard.set(mode.rawValue, forKey: TimetableViewMode.defaultsKey)
+    }
+
+    private func selectDateFromMonth(_ date: Date) {
+        let nextDate = calendar.startOfDay(for: date)
+        calendarTurnDirection = nextDate >= selectedDate ? 1 : -1
+        defersInitialTimelineScroll = true
+        skipsNextSelectedDateTimelineScroll = nextDate != selectedDate
+        initialTimelineScrollWorkItem?.cancel()
+
+        withAnimation(.easeOut(duration: viewModeTransitionDuration)) {
+            selectedDate = nextDate
+            viewMode = .day
+        }
+
+        UserDefaults.standard.set(TimetableViewMode.day.rawValue, forKey: TimetableViewMode.defaultsKey)
     }
 
     private func swipeGesture(for scope: CalendarSwipeScope) -> some Gesture {
@@ -368,7 +466,9 @@ struct TimetablePageView: View {
         let state = routineStates.state(for: routine, on: selectedDate, calendar: calendar)
         let delayMinutes = state?.delayMinutes ?? 0
         let baseStartMinute = calendar.minuteOfDay(for: routine.startTime ?? selectedDate)
-        let duration = max(5, routine.durationMinutes(calendar: calendar))
+        let versionOptions = routine.routineVersionOptions(calendar: calendar)
+        let selectedVersion = routine.routineVersion(for: state?.routineVersionID, calendar: calendar)
+        let duration = max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
         let startMinute = baseStartMinute + delayMinutes
         let endMinute = startMinute + duration
         let phase: RoutineNowPhase = endMinute <= currentMinute ? .missed : .next
@@ -380,8 +480,32 @@ struct TimetablePageView: View {
             startMinute: startMinute,
             endMinute: endMinute,
             delayMinutes: delayMinutes,
+            plannedDurationMinutes: duration,
+            selectedVersion: selectedVersion,
+            versionOptions: versionOptions,
             calendar: calendar,
             dayStart: selectedDayStart
+        )
+    }
+
+    private func selectRoutineVersion(_ version: RoutineVersion, for routine: ScheduleItem, on date: Date) {
+        let dayStart = calendar.startOfDay(for: date)
+        let existingState = routineStates.state(for: routine, on: dayStart, calendar: calendar)
+        let state = existingState ?? RoutineOccurrenceState(routineID: routine.id, dayStart: dayStart)
+
+        if existingState == nil {
+            modelContext.insert(state)
+        }
+
+        state.routineVersionID = version.id
+        state.updatedAt = .now
+        try? modelContext.save()
+
+        AppDataSyncService.updateWidgetSnapshot(
+            modelContext: modelContext,
+            queryItems: items,
+            queryRoutineStates: routineStates,
+            replacing: state
         )
     }
 

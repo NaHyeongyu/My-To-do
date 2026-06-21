@@ -5,12 +5,15 @@ struct TasksPageView: View {
     @Environment(\.modelContext) private var modelContext
 
     let items: [ScheduleItem]
+    let onEdit: (ScheduleItem) -> Void
     let onItemsChanged: () -> Void
+
+    @State private var searchText = ""
 
     private let horizontalPadding: CGFloat = 16
 
     private var openTaskIDs: [UUID] {
-        openTasks.map(\.id)
+        visibleOpenTasks.map(\.id)
     }
 
     private var completedTaskIDs: [UUID] {
@@ -21,8 +24,24 @@ struct TasksPageView: View {
         items.openTasks()
     }
 
+    private var visibleOpenTasks: [ScheduleItem] {
+        let query = trimmedSearchText
+        guard !query.isEmpty else {
+            return openTasks
+        }
+
+        return openTasks.filter { item in
+            item.title.localizedCaseInsensitiveContains(query)
+                || item.notes.localizedCaseInsensitiveContains(query)
+        }
+    }
+
     private var completedTasks: [ScheduleItem] {
         items.completedTasks()
+    }
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
@@ -32,22 +51,57 @@ struct TasksPageView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
 
-            ForEach(openTasks) { item in
-                TodayTaskRowView(item: item, onItemsChanged: onItemsChanged)
+            if visibleOpenTasks.isEmpty && !trimmedSearchText.isEmpty {
+                TaskSearchEmptyRow(query: trimmedSearchText)
                     .listRowInsets(EdgeInsets(top: 4, leading: horizontalPadding, bottom: 4, trailing: horizontalPadding))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            delete(item)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+            } else {
+                ForEach(visibleOpenTasks) { item in
+                    TodayTaskRowView(
+                        item: item,
+                        onEdit: onEdit,
+                        onItemsChanged: onItemsChanged
+                    )
+                        .listRowInsets(EdgeInsets(top: 4, leading: horizontalPadding, bottom: 4, trailing: horizontalPadding))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            Button {
+                                schedule(item, dayOffset: 7)
+                            } label: {
+                                Label("Next Week", systemImage: "calendar")
+                            }
+                            .tint(MissionTheme.accent)
+
+                            Button {
+                                schedule(item, dayOffset: 1)
+                            } label: {
+                                Label("Tomorrow", systemImage: "sun.max")
+                            }
+                            .tint(MissionTheme.info)
+
+                            Button {
+                                schedule(item, dayOffset: 0)
+                            } label: {
+                                Label("Today", systemImage: "calendar.day.timeline.left")
+                            }
+                            .tint(MissionTheme.success)
                         }
-                    }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                delete(item)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            .tint(MissionTheme.danger)
+                        }
+                }
             }
         }
         .listStyle(.plain)
+        .searchable(text: $searchText, prompt: "Search tasks")
         .scrollDismissesKeyboard(.interactively)
         .environment(\.defaultMinListRowHeight, 42)
         .animation(.snappy(duration: 0.18), value: openTaskIDs)
@@ -56,7 +110,7 @@ struct TasksPageView: View {
         .background(TaskListPalette.background)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             NavigationLink {
-                CompletedTasksPageView()
+                CompletedTasksPageView(onItemsChanged: onItemsChanged)
             } label: {
                 CompletedPinnedButton(count: completedTasks.count)
             }
@@ -65,12 +119,14 @@ struct TasksPageView: View {
             .padding(.top, 6)
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity)
-            .background {
-                Rectangle()
-                    .fill(.regularMaterial)
-                    .ignoresSafeArea(edges: .bottom)
-            }
         }
+    }
+
+    private func schedule(_ item: ScheduleItem, dayOffset: Int) {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        item.taskDate = calendar.date(byAdding: .day, value: dayOffset, to: today) ?? today
+        onItemsChanged()
     }
 
     private func delete(_ item: ScheduleItem) {
@@ -78,6 +134,32 @@ struct TasksPageView: View {
             modelContext.delete(item)
         }
         onItemsChanged()
+    }
+}
+
+private struct TaskSearchEmptyRow: View {
+    let query: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.body)
+                .foregroundStyle(TaskListPalette.secondaryText)
+
+            Text("No tasks matching \"\(query)\"")
+                .font(.body.weight(.medium))
+                .foregroundStyle(TaskListPalette.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+        }
+        .padding(.vertical, 11)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(TaskListPalette.rowBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(TaskListPalette.glassStroke, lineWidth: 0.5)
+        }
     }
 }
 
@@ -89,7 +171,7 @@ private struct CompletedPinnedButton: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.body)
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(TaskListPalette.secondaryText)
+                .foregroundStyle(MissionTheme.success)
 
             Text("Completed")
                 .font(.body.weight(.medium))
@@ -100,11 +182,11 @@ private struct CompletedPinnedButton: View {
 
             Text("\(count)")
                 .font(.caption.weight(.semibold).monospacedDigit())
-                .foregroundStyle(TaskListPalette.secondaryText)
+                .foregroundStyle(MissionTheme.selectedText)
                 .lineLimit(1)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 2)
-                .background(TaskListPalette.fill, in: Capsule())
+                .background(MissionTheme.accent, in: Capsule())
 
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
@@ -113,10 +195,6 @@ private struct CompletedPinnedButton: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TaskListPalette.glassStroke, lineWidth: 0.5)
-        }
+        .missionLiquidCard(cornerRadius: 14)
     }
 }

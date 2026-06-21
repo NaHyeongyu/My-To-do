@@ -1,16 +1,22 @@
+import SwiftData
 import SwiftUI
 import UserNotifications
 
 struct SettingsPageView: View {
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
     @AppStorage(AppSettingsKey.notificationsEnabled) private var notificationsEnabled = false
     @AppStorage(AppSettingsKey.themeMode) private var themeModeRaw = AppThemeMode.system.rawValue
+    @AppStorage(AppSettingsKey.customRoutineLabels) private var customRoutineLabelsRaw = CustomRoutineLabelStore.emptyStorage
+
+    @Query(sort: \ScheduleItem.createdAt, order: .reverse) private var items: [ScheduleItem]
 
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
     @State private var isRequestingNotifications = false
-    @State private var routineLabelTargetMinutes: [RoutineLabel: Int] = [:]
+    @State private var customLabelTitle = ""
+    @State private var customLabelSymbolName = CustomRoutineLabel.defaultSymbolName
 
     private var themeMode: Binding<AppThemeMode> {
         Binding {
@@ -59,30 +65,11 @@ struct SettingsPageView: View {
                 .padding(.vertical, 4)
             }
 
-            Section {
-                VStack(alignment: .leading, spacing: 12) {
-                    SettingsLabel(title: "Weekly Label Targets", systemImage: "scope")
-
-                    VStack(spacing: 12) {
-                        ForEach(RoutineLabel.allCases) { label in
-                            RoutineLabelTargetRow(
-                                label: label,
-                                minutes: targetMinutesBinding(for: label)
-                            )
-                        }
-                    }
-                }
-                .padding(.vertical, 4)
-            } footer: {
-                Text("Targets are used by Streak to show remaining time and risk by label.")
-            }
+            customLabelsSection
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(MissionTheme.appBackground)
-        .onAppear {
-            loadRoutineLabelTargets()
-        }
         .task {
             await refreshNotificationStatus()
         }
@@ -97,7 +84,94 @@ struct SettingsPageView: View {
         }
     }
 
+    private var customLabelsSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
+                SettingsLabel(title: "Custom Labels", systemImage: "tag")
+
+                HStack(spacing: 10) {
+                    TextField("New label", text: $customLabelTitle)
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.done)
+                        .onSubmit(addCustomLabel)
+
+                    Button(action: addCustomLabel) {
+                        Image(systemName: "plus")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 34, height: 34)
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.circle)
+                    .disabled(!canAddCustomLabel)
+                    .accessibilityLabel("Add custom label")
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(CustomRoutineLabelStore.availableSymbolNames, id: \.self) { symbolName in
+                            Button {
+                                customLabelSymbolName = symbolName
+                            } label: {
+                                Image(systemName: symbolName)
+                                    .font(.caption.weight(.semibold))
+                                    .frame(width: 32, height: 32)
+                            }
+                            .foregroundStyle(customLabelSymbolName == symbolName ? MissionTheme.selectedText : MissionTheme.graphite)
+                            .background(
+                                customLabelSymbolName == symbolName ? MissionTheme.selection : MissionTheme.controlFill,
+                                in: Circle()
+                            )
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(customLabelSymbolName == symbolName ? .isSelected : [])
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                if !customRoutineLabels.isEmpty {
+                    LazyVGrid(columns: customLabelGridColumns, spacing: 8) {
+                        ForEach(customRoutineLabels) { label in
+                            CustomRoutineLabelTile(label: label) {
+                                deleteCustomLabel(label)
+                            }
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var customLabelGridColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+    }
+
+    private var customRoutineLabels: [CustomRoutineLabel] {
+        CustomRoutineLabelStore.labels(from: customRoutineLabelsRaw)
+    }
+
+    private var routineLabelOptions: [RoutineLabelOption] {
+        RoutineLabelOption.options(customLabels: customRoutineLabels)
+    }
+
+    private var trimmedCustomLabelTitle: String {
+        customLabelTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canAddCustomLabel: Bool {
+        guard !trimmedCustomLabelTitle.isEmpty else {
+            return false
+        }
+
+        return !routineLabelOptions.contains {
+            $0.title.compare(trimmedCustomLabelTitle, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }
+    }
+
     private func setNotificationPreference(_ isEnabled: Bool) {
+        UserDefaults.standard.set(true, forKey: AppSettingsKey.notificationPreferenceReconciled)
+
         guard isEnabled else {
             notificationsEnabled = false
             Task {
@@ -125,11 +199,13 @@ struct SettingsPageView: View {
             await MainActor.run {
                 notificationStatus = settings.authorizationStatus
                 notificationsEnabled = granted && settings.authorizationStatus.allowsNotifications
+                UserDefaults.standard.set(true, forKey: AppSettingsKey.notificationPreferenceReconciled)
                 isRequestingNotifications = false
             }
         } catch {
             await MainActor.run {
                 notificationsEnabled = false
+                UserDefaults.standard.set(true, forKey: AppSettingsKey.notificationPreferenceReconciled)
                 isRequestingNotifications = false
             }
         }
@@ -154,60 +230,56 @@ struct SettingsPageView: View {
         openURL(url)
     }
 
-    private func loadRoutineLabelTargets() {
-        routineLabelTargetMinutes = Dictionary(
-            uniqueKeysWithValues: RoutineLabel.allCases.map {
-                ($0, RoutineLabelTargetStore.weeklyTargetMinutes(for: $0))
-            }
-        )
+    private func addCustomLabel() {
+        guard canAddCustomLabel else {
+            return
+        }
+
+        var labels = customRoutineLabels
+        labels.append(CustomRoutineLabel(title: trimmedCustomLabelTitle, symbolName: customLabelSymbolName))
+        customRoutineLabelsRaw = CustomRoutineLabelStore.encoded(labels)
+        customLabelTitle = ""
+        customLabelSymbolName = CustomRoutineLabel.defaultSymbolName
     }
 
-    private func targetMinutesBinding(for label: RoutineLabel) -> Binding<Int> {
-        Binding {
-            routineLabelTargetMinutes[label] ?? RoutineLabelTargetStore.weeklyTargetMinutes(for: label)
-        } set: { newValue in
-            RoutineLabelTargetStore.setWeeklyTargetMinutes(newValue, for: label)
-            routineLabelTargetMinutes[label] = RoutineLabelTargetStore.weeklyTargetMinutes(for: label)
+    private func deleteCustomLabel(_ label: CustomRoutineLabel) {
+        let labels = customRoutineLabels.filter { $0.id != label.id }
+        customRoutineLabelsRaw = CustomRoutineLabelStore.encoded(labels)
+
+        for item in items where item.routineLabelRawValue == label.id {
+            item.routineLabelRawValue = nil
         }
+
+        try? modelContext.save()
     }
 }
 
-private struct RoutineLabelTargetRow: View {
-    let label: RoutineLabel
-    @Binding var minutes: Int
-
-    private var targetText: String {
-        minutes == 0 ? "Off" : minutes.readableDuration
-    }
+private struct CustomRoutineLabelTile: View {
+    let label: CustomRoutineLabel
+    let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        ZStack(alignment: .topTrailing) {
             RoutineLabelBadge(
-                label: label,
-                fillsWidth: false,
-                fixedWidth: 120,
-                font: .caption.weight(.semibold),
-                iconSize: 12,
-                height: 30,
-                horizontalPadding: 9
+                label: label.option,
+                font: .caption2.weight(.semibold),
+                iconSize: 11,
+                height: 34,
+                horizontalPadding: 7
             )
+            .padding(.top, 4)
 
-            Spacer(minLength: 8)
-
-            Stepper(
-                value: $minutes,
-                in: 0...RoutineLabelTargetStore.maximumWeeklyTargetMinutes,
-                step: RoutineLabelTargetStore.targetStepMinutes
-            ) {
-                Text(targetText)
-                    .font(.body.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(MissionTheme.graphite)
-                    .lineLimit(1)
-                    .frame(minWidth: 58, alignment: .trailing)
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(MissionTheme.secondaryText)
+                    .background(Color(uiColor: .systemGroupedBackground), in: Circle())
             }
-            .accessibilityLabel("\(label.title) weekly target")
-            .accessibilityValue(targetText)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Delete \(label.title)")
         }
+        .frame(minHeight: 40)
     }
 }
 

@@ -2,7 +2,11 @@ import SwiftUI
 
 struct RoutinePlannerPageView: View {
     let items: [ScheduleItem]
+    let onAdd: (RepeatWeekday) -> Void
     let onEdit: (ScheduleItem) -> Void
+    let onDuplicate: (ScheduleItem) -> Void
+    let onPause: (ScheduleItem, RepeatWeekday) -> Void
+    let onDelete: (ScheduleItem) -> Void
 
     @State private var selectedWeekday = RepeatWeekday.current()
 
@@ -23,21 +27,59 @@ struct RoutinePlannerPageView: View {
             )
 
             ScrollView {
-                RoutineDayTimeline(
-                    weekday: selectedWeekday,
-                    routines: routines,
-                    startHour: startHour,
-                    endHour: endHour,
-                    onEdit: onEdit
-                )
-                .padding(.bottom, 82)
+                if routines.isEmpty {
+                    RoutineEmptyDayView(weekday: selectedWeekday) {
+                        onAdd(selectedWeekday)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 22)
+                    .padding(.bottom, 82)
+                } else {
+                    RoutineDayTimeline(
+                        weekday: selectedWeekday,
+                        routines: routines,
+                        startHour: startHour,
+                        endHour: endHour,
+                        onEdit: onEdit,
+                        onDuplicate: onDuplicate,
+                        onPause: { routine in
+                            onPause(routine, selectedWeekday)
+                        },
+                        onDelete: onDelete
+                    )
+                    .padding(.bottom, 82)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(MissionTheme.panel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(MissionTheme.panel)
+        .gesture(weekdaySwipeGesture)
         .sensoryFeedback(.selection, trigger: selectedWeekday)
+    }
+
+    private var weekdaySwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 28)
+            .onEnded { value in
+                guard abs(value.translation.width) > abs(value.translation.height),
+                      abs(value.translation.width) > 34 else {
+                    return
+                }
+
+                moveWeekday(by: value.translation.width < 0 ? 1 : -1)
+            }
+    }
+
+    private func moveWeekday(by offset: Int) {
+        guard let currentIndex = weekdays.firstIndex(of: selectedWeekday) else {
+            return
+        }
+
+        let nextIndex = (currentIndex + offset + weekdays.count) % weekdays.count
+        withAnimation(.snappy(duration: 0.2)) {
+            selectedWeekday = weekdays[nextIndex]
+        }
     }
 }
 
@@ -88,6 +130,9 @@ private struct RoutineDayTimeline: View {
     let startHour: Int
     let endHour: Int
     let onEdit: (ScheduleItem) -> Void
+    let onDuplicate: (ScheduleItem) -> Void
+    let onPause: (ScheduleItem) -> Void
+    let onDelete: (ScheduleItem) -> Void
 
     private let calendar = Calendar.current
 
@@ -123,6 +168,12 @@ private struct RoutineDayTimeline: View {
                 isCompact: layout.isCompact
             ) {
                 onEdit(layout.item)
+            } onDuplicate: {
+                onDuplicate(layout.item)
+            } onPause: {
+                onPause(layout.item)
+            } onDelete: {
+                onDelete(layout.item)
             }
             .frame(
                 width: layout.width,
@@ -150,6 +201,9 @@ private struct RoutineDayEventBlock: View {
     let item: ScheduleItem
     let isCompact: Bool
     let onEdit: () -> Void
+    let onDuplicate: () -> Void
+    let onPause: () -> Void
+    let onDelete: () -> Void
 
     private var timeRangeText: String {
         item.timeRangeText()
@@ -164,7 +218,7 @@ private struct RoutineDayEventBlock: View {
             .padding(.vertical, isCompact ? 5 : 7)
             .padding(.horizontal, isCompact ? 7 : 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(MissionTheme.elevatedPanel, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(MissionTheme.eventBackground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(MissionTheme.eventIndicator)
@@ -174,6 +228,23 @@ private struct RoutineDayEventBlock: View {
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button(action: onEdit) {
+                Label("Edit", systemImage: "pencil")
+            }
+
+            Button(action: onDuplicate) {
+                Label("Duplicate", systemImage: "plus.square.on.square")
+            }
+
+            Button(action: onPause) {
+                Label("Pause \(weekday.shortTitle)", systemImage: "pause.circle")
+            }
+
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
+        }
         .accessibilityLabel("\(item.title), \(weekday.title), \(timeRangeText)")
     }
 
@@ -200,7 +271,7 @@ private struct RoutineDayEventBlock: View {
     private var titleText: some View {
         Text(item.title)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(MissionTheme.graphite)
+            .foregroundStyle(MissionTheme.eventForeground)
             .lineLimit(1)
             .minimumScaleFactor(0.64)
     }
@@ -208,9 +279,40 @@ private struct RoutineDayEventBlock: View {
     private var timeText: some View {
         Text(timeRangeText)
             .font(.caption2.weight(.medium).monospacedDigit())
-            .foregroundStyle(MissionTheme.secondaryText)
+            .foregroundStyle(MissionTheme.eventSecondaryForeground)
             .lineLimit(1)
             .minimumScaleFactor(0.72)
             .allowsTightening(true)
+    }
+}
+
+private struct RoutineEmptyDayView: View {
+    let weekday: RepeatWeekday
+    let onAdd: () -> Void
+
+    var body: some View {
+        Button(action: onAdd) {
+            VStack(alignment: .leading, spacing: 10) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(MissionTheme.accent)
+
+                Text("Add routine for \(weekday.title)")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(MissionTheme.graphite)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+
+                Text("Build this day directly from the routine timeline.")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(MissionTheme.secondaryText)
+                    .lineLimit(2)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .missionCard()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add routine for \(weekday.title)")
     }
 }

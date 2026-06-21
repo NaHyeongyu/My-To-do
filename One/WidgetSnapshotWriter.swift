@@ -10,13 +10,13 @@ enum WidgetSnapshotWriter {
     ) {
         let today = calendar.startOfDay(for: now)
         let existingSnapshot = WidgetSnapshotStore.load()
-        let routines = items.routines(on: today, calendar: calendar)
+        let routines = items.routines(on: today, routineStates: routineStates, calendar: calendar)
             .prefix(5)
             .map { item in
                 let state = routineStates.state(for: item, on: today, calendar: calendar)
                 let delayMinutes = state?.delayMinutes ?? 0
                 let startMinute = calendar.minuteOfDay(for: item.startTime ?? now) + delayMinutes
-                let duration = max(5, item.durationMinutes(calendar: calendar))
+                let duration = max(5, item.plannedDurationMinutes(state: state, calendar: calendar))
                 let endMinute = startMinute + duration
                 let startDate = calendar.date(byAdding: .minute, value: startMinute, to: today) ?? now
                 let endDate = calendar.date(byAdding: .minute, value: endMinute, to: today) ?? now
@@ -33,7 +33,7 @@ enum WidgetSnapshotWriter {
                     id: item.id,
                     title: item.title,
                     startTimeText: timeText(for: startDate),
-                    endTimeText: endTimeText(for: item, endDate: endDate, calendar: calendar),
+                    endTimeText: endTimeText(for: endDate, crossesNextDay: endMinute >= ScheduleItem.minutesPerDay),
                     startDate: startDate,
                     endDate: endDate,
                     outcome: displayOutcome
@@ -70,8 +70,8 @@ enum WidgetSnapshotWriter {
         date.formatted(.dateTime.hour().minute())
     }
 
-    private static func endTimeText(for item: ScheduleItem, endDate: Date, calendar: Calendar) -> String {
-        let suffix = item.crossesMidnight(calendar: calendar) ? " +1d" : ""
+    private static func endTimeText(for endDate: Date, crossesNextDay: Bool) -> String {
+        let suffix = crossesNextDay ? " +1d" : ""
         return "\(timeText(for: endDate))\(suffix)"
     }
 
