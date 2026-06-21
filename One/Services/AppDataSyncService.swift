@@ -11,8 +11,14 @@ enum AppDataSyncService {
         items: [ScheduleItem],
         routineStates: [RoutineOccurrenceState]
     ) -> String {
-        let itemSignature = items.map(widgetSnapshotItemSignature).joined(separator: ";")
-        let stateSignature = routineStates.map(widgetSnapshotStateSignature).joined(separator: ";")
+        let itemSignature = items
+            .sorted { $0.id.uuidString < $1.id.uuidString }
+            .map(widgetSnapshotItemSignature)
+            .joined(separator: ";")
+        let stateSignature = routineStates
+            .sorted { $0.id.uuidString < $1.id.uuidString }
+            .map(widgetSnapshotStateSignature)
+            .joined(separator: ";")
 
         return "\(itemSignature)#\(stateSignature)"
     }
@@ -23,6 +29,7 @@ enum AppDataSyncService {
     ) -> String {
         let itemSignatures = items
             .filter { $0.kind == .routine }
+            .sorted { $0.id.uuidString < $1.id.uuidString }
             .map { item in
                 [
                     item.id.uuidString,
@@ -37,13 +44,15 @@ enum AppDataSyncService {
                     item.sourceRoutineID?.uuidString ?? ""
                 ].joined(separator: "|")
             }
-        let stateSignatures = routineStates.map { state in
-            [
-                state.routineID.uuidString,
-                state.dayStart.timeIntervalSince1970.description,
-                state.isHidden.description
-            ].joined(separator: "|")
-        }
+        let stateSignatures = routineStates
+            .sorted { $0.id.uuidString < $1.id.uuidString }
+            .map { state in
+                [
+                    state.routineID.uuidString,
+                    state.dayStart.timeIntervalSince1970.description,
+                    state.isHidden.description
+                ].joined(separator: "|")
+            }
 
         return (itemSignatures + stateSignatures).joined(separator: ";")
     }

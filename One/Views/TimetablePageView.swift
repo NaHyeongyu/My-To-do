@@ -501,17 +501,12 @@ struct TimetablePageView: View {
         state.updatedAt = .now
         try? modelContext.save()
 
-        WidgetSnapshotWriter.save(
-            items: items,
-            routineStates: routineStatesReplacing(state)
+        AppDataSyncService.updateWidgetSnapshot(
+            modelContext: modelContext,
+            queryItems: items,
+            queryRoutineStates: routineStates,
+            replacing: state
         )
-    }
-
-    private func routineStatesReplacing(_ updatedState: RoutineOccurrenceState) -> [RoutineOccurrenceState] {
-        routineStates.filter { state in
-            state.routineID != updatedState.routineID
-                || !calendar.isDate(state.dayStart, inSameDayAs: updatedState.dayStart)
-        } + [updatedState]
     }
 
     private var monthGridDays: [Date?] {

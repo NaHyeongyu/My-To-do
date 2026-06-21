@@ -289,8 +289,7 @@ struct RootView: View {
         occurrence.routineVersionsRawValue = routine.routineVersionsRawValue
         occurrence.sourceRoutineID = routine.id
 
-        moveRoutineState(from: routine.id, to: occurrence.id, on: dayStart)
-        resetRoutineDelay(for: occurrence.id, on: dayStart)
+        moveRoutineStateAndResetDelay(from: routine.id, to: occurrence.id, on: dayStart)
         saveAndUpdateWidgetSnapshot()
     }
 
@@ -302,19 +301,29 @@ struct RootView: View {
         }
     }
 
-    private func moveRoutineState(from oldID: UUID, to newID: UUID, on dayStart: Date) {
-        for state in fetchedRoutineStates()
-            where state.routineID == oldID && Calendar.current.isDate(state.dayStart, inSameDayAs: dayStart) {
-            state.routineID = newID
-            state.delayMinutes = 0
-            state.isHidden = false
-            state.updatedAt = .now
+    private func moveRoutineStateAndResetDelay(from oldID: UUID, to newID: UUID, on dayStart: Date) {
+        let states = fetchedRoutineStates()
+        let calendar = Calendar.current
+
+        for state in states where calendar.isDate(state.dayStart, inSameDayAs: dayStart) {
+            if state.routineID == oldID {
+                state.routineID = newID
+                state.delayMinutes = 0
+                state.isHidden = false
+                state.updatedAt = .now
+            } else if state.routineID == newID {
+                state.delayMinutes = 0
+                state.updatedAt = .now
+            }
         }
     }
 
     private func resetRoutineDelay(for routineID: UUID, on dayStart: Date) {
-        for state in fetchedRoutineStates()
-            where state.routineID == routineID && Calendar.current.isDate(state.dayStart, inSameDayAs: dayStart) {
+        let states = fetchedRoutineStates()
+        let calendar = Calendar.current
+
+        for state in states
+            where state.routineID == routineID && calendar.isDate(state.dayStart, inSameDayAs: dayStart) {
             state.delayMinutes = 0
             state.updatedAt = .now
         }

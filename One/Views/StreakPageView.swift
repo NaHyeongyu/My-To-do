@@ -144,7 +144,7 @@ struct StreakPageView: View {
                         .foregroundStyle(TaskListPalette.primaryText)
                         .lineLimit(1)
 
-                    Text(stats.currentStreak == 1 ? "day streak" : "day streak")
+                    Text("day streak")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(TaskListPalette.secondaryText)
                         .lineLimit(1)
@@ -1069,13 +1069,18 @@ private struct StreakDaySummary: Identifiable {
 }
 
 private struct RoutineOccurrenceStateLookup {
-    private let statesByRoutineAndDay: [String: RoutineOccurrenceState]
+    private struct Key: Hashable {
+        let routineID: UUID
+        let dayStart: Date
+    }
+
+    private let statesByRoutineAndDay: [Key: RoutineOccurrenceState]
     private let calendar: Calendar
 
     init(states: [RoutineOccurrenceState], calendar: Calendar) {
         self.calendar = calendar
         self.statesByRoutineAndDay = Dictionary(
-            states.map { (Self.key(routineID: $0.routineID, dayStart: $0.dayStart, calendar: calendar), $0) },
+            states.map { (Key(routineID: $0.routineID, dayStart: calendar.startOfDay(for: $0.dayStart)), $0) },
             uniquingKeysWith: { lhs, rhs in
                 lhs.updatedAt >= rhs.updatedAt ? lhs : rhs
             }
@@ -1084,12 +1089,8 @@ private struct RoutineOccurrenceStateLookup {
 
     func state(for routine: ScheduleItem, on date: Date) -> RoutineOccurrenceState? {
         statesByRoutineAndDay[
-            Self.key(routineID: routine.id, dayStart: date, calendar: calendar)
+            Key(routineID: routine.id, dayStart: calendar.startOfDay(for: date))
         ]
-    }
-
-    private static func key(routineID: UUID, dayStart: Date, calendar: Calendar) -> String {
-        "\(routineID.uuidString)-\(Int(calendar.startOfDay(for: dayStart).timeIntervalSince1970))"
     }
 }
 

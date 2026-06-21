@@ -135,7 +135,6 @@ struct DialogBackdropModifier: ViewModifier {
                         .opacity(opacity)
                         .ignoresSafeArea()
                         .frame(width: 10_000, height: 10_000)
-                        .allowsHitTesting(false)
                         .accessibilityHidden(true)
                         .transition(.opacity)
                 }

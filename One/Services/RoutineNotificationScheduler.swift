@@ -127,8 +127,8 @@ actor RoutineNotificationScheduler {
         for schedule: RoutineNotificationSchedule,
         now: Date,
         calendar: Calendar,
-        overrideSourceIDsByDay: [Int: Set<UUID>],
-        hiddenRoutineIDsByDay: [Int: Set<UUID>]
+        overrideSourceIDsByDay: [Date: Set<UUID>],
+        hiddenRoutineIDsByDay: [Date: Set<UUID>]
     ) -> [RoutineNotificationEvent] {
         if let taskDate = schedule.taskDate {
             let dayStart = calendar.startOfDay(for: taskDate)
@@ -166,26 +166,26 @@ actor RoutineNotificationScheduler {
     private func overrideSourceIDsByDay(
         for schedules: [RoutineNotificationSchedule],
         calendar: Calendar
-    ) -> [Int: Set<UUID>] {
+    ) -> [Date: Set<UUID>] {
         schedules.reduce(into: [:]) { result, schedule in
             guard let taskDate = schedule.taskDate, let sourceRoutineID = schedule.sourceRoutineID else {
                 return
             }
 
-            result[dayKey(for: taskDate, calendar: calendar), default: []].insert(sourceRoutineID)
+            result[calendar.startOfDay(for: taskDate), default: []].insert(sourceRoutineID)
         }
     }
 
     private func hiddenRoutineIDsByDay(
         for states: [RoutineNotificationOccurrenceState],
         calendar: Calendar
-    ) -> [Int: Set<UUID>] {
+    ) -> [Date: Set<UUID>] {
         states.reduce(into: [:]) { result, state in
             guard state.isHidden else {
                 return
             }
 
-            result[dayKey(for: state.dayStart, calendar: calendar), default: []].insert(state.routineID)
+            result[calendar.startOfDay(for: state.dayStart), default: []].insert(state.routineID)
         }
     }
 
@@ -193,20 +193,16 @@ actor RoutineNotificationScheduler {
         _ schedule: RoutineNotificationSchedule,
         on dayStart: Date,
         calendar: Calendar,
-        overrideSourceIDsByDay: [Int: Set<UUID>],
-        hiddenRoutineIDsByDay: [Int: Set<UUID>]
+        overrideSourceIDsByDay: [Date: Set<UUID>],
+        hiddenRoutineIDsByDay: [Date: Set<UUID>]
     ) -> Bool {
         guard schedule.taskDate == nil else {
             return false
         }
 
-        let dayKey = dayKey(for: dayStart, calendar: calendar)
+        let dayKey = calendar.startOfDay(for: dayStart)
         return overrideSourceIDsByDay[dayKey]?.contains(schedule.routineID) == true
             || hiddenRoutineIDsByDay[dayKey]?.contains(schedule.routineID) == true
-    }
-
-    private func dayKey(for date: Date, calendar: Calendar) -> Int {
-        Int(calendar.startOfDay(for: date).timeIntervalSince1970)
     }
 
     private func events(

@@ -66,8 +66,7 @@ struct TodayTaskRowView: View {
             return "Today"
         }
 
-        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: .now)),
-           calendar.isDate(taskDate, inSameDayAs: tomorrow) {
+        if calendar.isDateInTomorrow(taskDate) {
             return "Tomorrow"
         }
 

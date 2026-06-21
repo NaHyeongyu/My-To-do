@@ -100,11 +100,12 @@ extension Array where Element == ScheduleItem {
                 .filter { calendar.isDate($0.dayStart, inSameDayAs: dayStart) && $0.isHidden }
                 .map(\.routineID)
         )
-        let routineOccurrenceOverrides = routines(on: dayStart, calendar: calendar)
+        let dayRoutines = routines(on: dayStart, calendar: calendar)
+        let routineOccurrenceOverrides = dayRoutines
             .filter { $0.taskDate != nil }
         let overrideSourceIDs = Set(routineOccurrenceOverrides.compactMap(\.sourceRoutineID))
 
-        return routines(on: dayStart, calendar: calendar)
+        return dayRoutines
             .filter { routine in
                 if hiddenRoutineIDs.contains(routine.id) {
                     return false
