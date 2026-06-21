@@ -48,19 +48,46 @@ enum TimelineLayout {
         durationMinutes: ((ScheduleItem) -> Int)? = nil,
         delayMinutes: (ScheduleItem) -> Int = { _ in 0 }
     ) -> [TimelineEventLayout] {
-        let rawEvents = items.compactMap { item -> RawTimelineEvent? in
+        let segments = items.compactMap { item -> TimelineEventSegment? in
             let delayedStartMinute = calendar.minuteOfDay(for: item.startTime ?? fallbackDate) + delayMinutes(item)
-            guard delayedStartMinute < ScheduleItem.minutesPerDay * 2 else {
+            let durationMinutes = durationMinutes?(item) ?? item.durationMinutes(calendar: calendar)
+
+            return TimelineEventSegment(
+                item: item,
+                occurrenceDate: calendar.startOfDay(for: fallbackDate),
+                startMinute: delayedStartMinute,
+                durationMinutes: durationMinutes
+            )
+        }
+
+        return eventLayouts(for: segments, in: width, startHour: startHour)
+    }
+
+    static func eventLayouts(
+        for segments: [TimelineEventSegment],
+        in width: CGFloat,
+        startHour: Int
+    ) -> [TimelineEventLayout] {
+        let rawEvents = segments.compactMap { segment -> RawTimelineEvent? in
+            guard segment.startMinute < ScheduleItem.minutesPerDay else {
                 return nil
             }
 
-            let durationMinutes = durationMinutes?(item) ?? item.durationMinutes(calendar: calendar)
-            let startMinute = min(max(0, delayedStartMinute), ScheduleItem.minutesPerDay - 1)
-            let endMinute = min(ScheduleItem.minutesPerDay, max(startMinute + 1, delayedStartMinute + max(1, durationMinutes)))
+            let durationMinutes = max(1, segment.durationMinutes)
+            guard segment.startMinute + durationMinutes > 0 else {
+                return nil
+            }
+
+            let startMinute = min(max(0, segment.startMinute), ScheduleItem.minutesPerDay - 1)
+            let endMinute = min(ScheduleItem.minutesPerDay, max(startMinute + 1, segment.startMinute + durationMinutes))
+            guard endMinute > startMinute else {
+                return nil
+            }
+
             let top = eventTop(startMinute: startMinute, startHour: startHour)
             let height = eventHeight(startMinute: startMinute, durationMinutes: endMinute - startMinute)
             return RawTimelineEvent(
-                item: item,
+                segment: segment,
                 startMinute: startMinute,
                 endMinute: endMinute,
                 top: top,
@@ -137,7 +164,7 @@ enum TimelineLayout {
         return assigned.map { assignment in
             let x = eventLeadingInset + CGFloat(assignment.column) * (columnWidth + eventColumnSpacing)
             return TimelineEventLayout(
-                item: assignment.event.item,
+                segment: assignment.event.segment,
                 startMinute: assignment.event.startMinute,
                 endMinute: assignment.event.endMinute,
                 top: assignment.event.top,
@@ -161,8 +188,40 @@ enum TimelineLayout {
     }
 }
 
-struct TimelineEventLayout: Identifiable {
+struct TimelineEventSegment: Identifiable {
     let item: ScheduleItem
+    let occurrenceDate: Date
+    let startMinute: Int
+    let durationMinutes: Int
+    let displayedTimeRangeText: String?
+    let allowsMove: Bool
+    private let identitySuffix: String
+
+    init(
+        item: ScheduleItem,
+        occurrenceDate: Date,
+        startMinute: Int,
+        durationMinutes: Int,
+        displayedTimeRangeText: String? = nil,
+        allowsMove: Bool = true,
+        identitySuffix: String? = nil
+    ) {
+        self.item = item
+        self.occurrenceDate = occurrenceDate
+        self.startMinute = startMinute
+        self.durationMinutes = max(1, durationMinutes)
+        self.displayedTimeRangeText = displayedTimeRangeText
+        self.allowsMove = allowsMove
+        self.identitySuffix = identitySuffix ?? Int(occurrenceDate.timeIntervalSince1970).description
+    }
+
+    var id: String {
+        "\(item.id.uuidString)-\(identitySuffix)"
+    }
+}
+
+struct TimelineEventLayout: Identifiable {
+    let segment: TimelineEventSegment
     let startMinute: Int
     let endMinute: Int
     let top: CGFloat
@@ -170,8 +229,28 @@ struct TimelineEventLayout: Identifiable {
     let height: CGFloat
     let x: CGFloat
 
-    var id: UUID {
-        item.id
+    var id: String {
+        segment.id
+    }
+
+    var item: ScheduleItem {
+        segment.item
+    }
+
+    var occurrenceDate: Date {
+        segment.occurrenceDate
+    }
+
+    var fullDurationMinutes: Int {
+        segment.durationMinutes
+    }
+
+    var displayedTimeRangeText: String? {
+        segment.displayedTimeRangeText
+    }
+
+    var allowsMove: Bool {
+        segment.allowsMove
     }
 
     var isCompact: Bool {
@@ -184,7 +263,7 @@ struct TimelineEventLayout: Identifiable {
 }
 
 private struct RawTimelineEvent {
-    let item: ScheduleItem
+    let segment: TimelineEventSegment
     let startMinute: Int
     let endMinute: Int
     let top: CGFloat

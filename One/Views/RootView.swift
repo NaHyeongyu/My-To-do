@@ -241,7 +241,7 @@ struct RootView: View {
         let calendar = Calendar.current
         let dayStart = calendar.startOfDay(for: date)
         let durationMinutes = max(5, routine.durationMinutes(calendar: calendar))
-        let latestStartMinute = max(0, ScheduleItem.minutesPerDay - durationMinutes)
+        let latestStartMinute = ScheduleItem.minutesPerDay - 5
         let normalizedStartMinute = min(latestStartMinute, max(0, startMinute))
         let newStartTime = calendar.date(byAdding: .minute, value: normalizedStartMinute, to: dayStart) ?? dayStart
         let newEndTime = calendar.date(byAdding: .minute, value: normalizedStartMinute + durationMinutes, to: dayStart) ?? newStartTime

@@ -110,11 +110,11 @@ struct CalendarDayStrip: View {
 
 struct CalendarDayView: View {
     let date: Date
-    let routines: [ScheduleItem]
+    let routineSegments: [TimelineEventSegment]
     let routineStates: [RoutineOccurrenceState]
     let startHour: Int
     let endHour: Int
-    let onEdit: (ScheduleItem) -> Void
+    let onEdit: (ScheduleItem, Date) -> Void
     let onMove: (ScheduleItem, Int) -> Void
 
     private let calendar = Calendar.current
@@ -142,21 +142,21 @@ struct CalendarDayView: View {
                         )
 
                         ForEach(layouts) { layout in
-                            let occurrenceState = routineStates.state(for: layout.item, on: date, calendar: calendar)
-                            let activeDragState = dragState?.itemID == layout.item.id ? dragState : nil
+                            let occurrenceState = routineStates.state(for: layout.item, on: layout.occurrenceDate, calendar: calendar)
+                            let activeDragState = dragState?.layoutID == layout.id ? dragState : nil
                             let isDragging = activeDragState != nil
-	                            CalendarEventBlock(
-	                                item: layout.item,
-	                                occurrenceState: occurrenceState,
-	                                plannedDurationMinutes: layout.item.plannedDurationMinutes(state: occurrenceState, calendar: calendar),
-	                                isCompact: layout.isCompact,
-	                                displayedTimeRangeText: activeDragState.map {
-	                                    dragTimeRangeText(
-	                                        startMinute: $0.startMinute,
-	                                        durationMinutes: layout.durationMinutes
-	                                    )
-	                                }
-	                            )
+                            CalendarEventBlock(
+                                item: layout.item,
+                                occurrenceState: occurrenceState,
+                                plannedDurationMinutes: layout.fullDurationMinutes,
+                                isCompact: layout.isCompact,
+                                displayedTimeRangeText: activeDragState.map {
+                                    dragTimeRangeText(
+                                        startMinute: $0.startMinute,
+                                        durationMinutes: layout.fullDurationMinutes
+                                    )
+                                } ?? layout.displayedTimeRangeText
+                            )
                             .frame(
                                 width: layout.width,
                                 height: layout.height
@@ -168,21 +168,21 @@ struct CalendarDayView: View {
                             .scaleEffect(isDragging ? 1.015 : 1)
                             .shadow(color: .black.opacity(isDragging ? 0.16 : 0), radius: 12, x: 0, y: 6)
                             .overlay(alignment: .topTrailing) {
-	                                if let activeDragState {
-	                                    CalendarEventDragBadge(
-	                                        text: dragTimeRangeText(
-	                                            startMinute: activeDragState.startMinute,
-	                                            durationMinutes: layout.durationMinutes
-	                                        )
-	                                    )
-	                                    .padding(.top, -28)
-	                                    .padding(.trailing, 2)
-	                                }
+                                if let activeDragState {
+                                    CalendarEventDragBadge(
+                                        text: dragTimeRangeText(
+                                            startMinute: activeDragState.startMinute,
+                                            durationMinutes: layout.fullDurationMinutes
+                                        )
+                                    )
+                                    .padding(.top, -28)
+                                    .padding(.trailing, 2)
+                                }
                             }
                             .zIndex(isDragging ? 10 : 0)
                             .accessibilityAddTraits(.isButton)
                             .accessibilityAction {
-                                onEdit(layout.item)
+                                onEdit(layout.item, layout.occurrenceDate)
                             }
                         }
 
@@ -199,18 +199,22 @@ struct CalendarDayView: View {
                             minimumPressDuration: dragPressDuration,
                             allowableMovement: dragPressMaximumDistance,
                             onTap: { layout in
-                                onEdit(layout.item)
+                                onEdit(layout.item, layout.occurrenceDate)
                             },
                             onLongPressBegan: { layout in
+                                guard layout.allowsMove else { return }
                                 activateDrag(for: layout, translation: 0)
                             },
                             onLongPressChanged: { layout, translation in
+                                guard layout.allowsMove else { return }
                                 updateDragState(for: layout, translation: translation)
                             },
                             onLongPressEnded: { layout, translation in
+                                guard layout.allowsMove else { return }
                                 finishDrag(for: layout, translation: translation)
                             },
                             onLongPressCancelled: { layout in
+                                guard layout.allowsMove else { return }
                                 cancelDrag(for: layout)
                             }
                         )
@@ -225,6 +229,10 @@ struct CalendarDayView: View {
     }
 
     private func finishDrag(for layout: TimelineEventLayout, translation: CGFloat) {
+        guard layout.allowsMove else {
+            return
+        }
+
         let finalStartMinute = proposedStartMinute(for: layout, translation: translation)
         if finalStartMinute != layout.startMinute {
             onMove(layout.item, finalStartMinute)
@@ -236,7 +244,7 @@ struct CalendarDayView: View {
     }
 
     private func cancelDrag(for layout: TimelineEventLayout) {
-        if dragState?.itemID == layout.item.id {
+        if dragState?.layoutID == layout.id {
             withAnimation(.snappy(duration: 0.16)) {
                 dragState = nil
             }
@@ -244,13 +252,21 @@ struct CalendarDayView: View {
     }
 
     private func activateDrag(for layout: TimelineEventLayout, translation: CGFloat) {
+        guard layout.allowsMove else {
+            return
+        }
+
         updateDragState(for: layout, translation: translation)
         CalendarEventHaptics.dragBegan()
     }
 
     private func updateDragState(for layout: TimelineEventLayout, translation: CGFloat) {
+        guard layout.allowsMove else {
+            return
+        }
+
         let nextState = CalendarEventDragState(
-            itemID: layout.item.id,
+            layoutID: layout.id,
             startMinute: proposedStartMinute(for: layout, translation: translation)
         )
 
@@ -259,23 +275,23 @@ struct CalendarDayView: View {
         }
     }
 
-	    private func proposedStartMinute(for layout: TimelineEventLayout, translation: CGFloat) -> Int {
-	        let deltaMinutes = Double(translation / TimelineLayout.hourHeight * 60)
-	        let snappedDeltaMinutes = Int((deltaMinutes / Double(dragSnapMinutes)).rounded(.toNearestOrAwayFromZero)) * dragSnapMinutes
-	        let latestStartMinute = max(0, ScheduleItem.minutesPerDay - max(5, layout.durationMinutes))
+    private func proposedStartMinute(for layout: TimelineEventLayout, translation: CGFloat) -> Int {
+        let deltaMinutes = Double(translation / TimelineLayout.hourHeight * 60)
+        let snappedDeltaMinutes = Int((deltaMinutes / Double(dragSnapMinutes)).rounded(.toNearestOrAwayFromZero)) * dragSnapMinutes
+        let latestStartMinute = ScheduleItem.minutesPerDay - dragSnapMinutes
 
-	        return min(latestStartMinute, max(0, layout.startMinute + snappedDeltaMinutes))
-	    }
+        return min(latestStartMinute, max(0, layout.startMinute + snappedDeltaMinutes))
+    }
 
-	    private func dragTimeRangeText(startMinute: Int, durationMinutes: Int) -> String {
-	        let endMinute = startMinute + max(1, durationMinutes)
-	        let suffix = endMinute >= ScheduleItem.minutesPerDay ? " +1d" : ""
-	        return "\(timeText(for: startMinute)) - \(timeText(for: endMinute))\(suffix)"
-	    }
+    private func dragTimeRangeText(startMinute: Int, durationMinutes: Int) -> String {
+        let endMinute = startMinute + max(1, durationMinutes)
+        let suffix = endMinute >= ScheduleItem.minutesPerDay ? " +1d" : ""
+        return "\(timeText(for: startMinute)) - \(timeText(for: endMinute))\(suffix)"
+    }
 
-	    private func timeText(for minute: Int) -> String {
-	        let normalizedMinute = ((minute % ScheduleItem.minutesPerDay) + ScheduleItem.minutesPerDay) % ScheduleItem.minutesPerDay
-	        let hour = normalizedMinute / 60
+    private func timeText(for minute: Int) -> String {
+        let normalizedMinute = ((minute % ScheduleItem.minutesPerDay) + ScheduleItem.minutesPerDay) % ScheduleItem.minutesPerDay
+        let hour = normalizedMinute / 60
         let minute = normalizedMinute % 60
         var components = calendar.dateComponents([.year, .month, .day], from: date)
         components.hour = hour
@@ -294,23 +310,15 @@ struct CalendarDayView: View {
 
     private func eventLayouts(width: CGFloat) -> [TimelineEventLayout] {
         TimelineLayout.eventLayouts(
-            for: routines,
+            for: routineSegments,
             in: width,
-            startHour: startHour,
-            calendar: calendar,
-            fallbackDate: date,
-            durationMinutes: { routine in
-                let state = routineStates.state(for: routine, on: date, calendar: calendar)
-                return max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
-            }
-        ) { routine in
-            routineStates.state(for: routine, on: date, calendar: calendar)?.delayMinutes ?? 0
-        }
+            startHour: startHour
+        )
     }
 }
 
 private struct CalendarEventDragState: Equatable {
-    let itemID: UUID
+    let layoutID: String
     let startMinute: Int
 }
 
@@ -784,18 +792,18 @@ private enum CalendarMonthLayout {
     static let cellHeight: CGFloat = 112
 }
 
-	private struct CalendarEventBlock: View {
-	    let item: ScheduleItem
-	    let occurrenceState: RoutineOccurrenceState?
-	    let plannedDurationMinutes: Int
-	    let isCompact: Bool
-	    let displayedTimeRangeText: String?
+private struct CalendarEventBlock: View {
+    let item: ScheduleItem
+    let occurrenceState: RoutineOccurrenceState?
+    let plannedDurationMinutes: Int
+    let isCompact: Bool
+    let displayedTimeRangeText: String?
 
-	    private let calendar = Calendar.current
+    private let calendar = Calendar.current
 
-	    private var timeRangeText: String {
-	        displayedTimeRangeText ?? item.timeRangeText(durationMinutes: plannedDurationMinutes, calendar: calendar)
-	    }
+    private var timeRangeText: String {
+        displayedTimeRangeText ?? item.timeRangeText(durationMinutes: plannedDurationMinutes, calendar: calendar)
+    }
 
     private var status: RoutineOccurrenceStatus {
         occurrenceState?.status ?? .pending

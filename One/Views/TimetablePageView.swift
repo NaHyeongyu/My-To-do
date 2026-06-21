@@ -27,15 +27,36 @@ struct TimetablePageView: View {
         items.routines(on: selectedDate, routineStates: routineStates, calendar: calendar)
     }
 
+    private var routineSegments: [TimelineEventSegment] {
+        let dayStart = selectedDayStart
+        let previousDay = calendar.date(byAdding: .day, value: -1, to: dayStart).map {
+            calendar.startOfDay(for: $0)
+        }
+        let carryoverSegments = previousDay.map { occurrenceDate in
+            items.routines(on: occurrenceDate, routineStates: routineStates, calendar: calendar)
+                .compactMap {
+                    carriedRoutineSegment(
+                        for: $0,
+                        occurrenceDate: occurrenceDate,
+                        displayDate: dayStart
+                    )
+                }
+        } ?? []
+        let currentSegments = routines.compactMap {
+            currentRoutineSegment(for: $0, occurrenceDate: dayStart)
+        }
+
+        return carryoverSegments + currentSegments
+    }
+
     private var calendarItems: [ScheduleItem] {
         items
     }
 
     private var initialTimelineHour: Int {
         let currentHour = calendar.component(.hour, from: .now)
-        let firstRoutineHour = routines
-            .compactMap(\.startTime)
-            .map { calendar.minuteOfDay(for: $0) / 60 }
+        let firstRoutineHour = routineSegments
+            .map { max(0, $0.startMinute) / 60 }
             .min()
         let baseHour = calendar.isDateInToday(selectedDate) ? min(firstRoutineHour ?? currentHour, currentHour) : (firstRoutineHour ?? 8)
 
@@ -223,14 +244,14 @@ struct TimetablePageView: View {
                         onAddRoutine: {
                             onAddRoutine(selectedDayStart)
                         },
-                        onDone: {
-                            onMarkRoutineDone($0, selectedDayStart)
+                        onDone: { routine, occurrenceDate in
+                            onMarkRoutineDone(routine, occurrenceDate)
                         },
-                        onSkip: {
-                            onSkipRoutine($0, selectedDayStart)
+                        onSkip: { routine, occurrenceDate in
+                            onSkipRoutine(routine, occurrenceDate)
                         },
-                        onSelectVersion: { routine, version in
-                            selectRoutineVersion(version, for: routine, on: selectedDayStart)
+                        onSelectVersion: { routine, occurrenceDate, version in
+                            selectRoutineVersion(version, for: routine, on: occurrenceDate)
                         }
                     )
                 }
@@ -242,12 +263,12 @@ struct TimetablePageView: View {
             ScrollView {
                 CalendarDayView(
                     date: selectedDate,
-                    routines: routines,
+                    routineSegments: routineSegments,
                     routineStates: routineStates,
                     startHour: dayStartHour,
                     endHour: dayEndHour,
-                    onEdit: { routine in
-                        onEdit(routine, selectedDayStart)
+                    onEdit: { routine, occurrenceDate in
+                        onEdit(routine, occurrenceDate)
                     },
                     onMove: { routine, startMinute in
                         onMoveRoutine(routine, selectedDayStart, startMinute)
@@ -439,9 +460,7 @@ struct TimetablePageView: View {
         }
 
         let currentMinute = calendar.minuteOfDay(for: now)
-        let candidates = routines.map { routine in
-            candidate(for: routine, currentMinute: currentMinute)
-        }
+        let candidates = nowCandidates(currentMinute: currentMinute)
         let pendingCandidates = candidates.filter { !$0.status.isResolved }
 
         if let activeCandidate = pendingCandidates
@@ -462,19 +481,65 @@ struct TimetablePageView: View {
             .withPhase(.missed)
     }
 
-    private func candidate(for routine: ScheduleItem, currentMinute: Int) -> RoutineNowCandidate {
-        let state = routineStates.state(for: routine, on: selectedDate, calendar: calendar)
+    private func nowCandidates(currentMinute: Int) -> [RoutineNowCandidate] {
+        let dayStart = selectedDayStart
+        let currentDayCandidates = routines.compactMap {
+            candidate(
+                for: $0,
+                occurrenceDate: dayStart,
+                displayDayStart: dayStart,
+                startMinuteOffset: 0,
+                currentMinute: currentMinute
+            )
+        }
+        let previousDayCandidates = previousDayStart().map { occurrenceDate in
+            items.routines(on: occurrenceDate, routineStates: routineStates, calendar: calendar)
+                .compactMap {
+                    candidate(
+                        for: $0,
+                        occurrenceDate: occurrenceDate,
+                        displayDayStart: dayStart,
+                        startMinuteOffset: -ScheduleItem.minutesPerDay,
+                        currentMinute: currentMinute
+                    )
+                }
+        } ?? []
+
+        return previousDayCandidates + currentDayCandidates
+    }
+
+    private func previousDayStart() -> Date? {
+        calendar.date(byAdding: .day, value: -1, to: selectedDayStart).map(calendar.startOfDay(for:))
+    }
+
+    private func candidate(
+        for routine: ScheduleItem,
+        occurrenceDate: Date,
+        displayDayStart: Date,
+        startMinuteOffset: Int,
+        currentMinute: Int
+    ) -> RoutineNowCandidate? {
+        guard let startTime = routine.startTime else {
+            return nil
+        }
+
+        let state = routineStates.state(for: routine, on: occurrenceDate, calendar: calendar)
         let delayMinutes = state?.delayMinutes ?? 0
-        let baseStartMinute = calendar.minuteOfDay(for: routine.startTime ?? selectedDate)
+        let baseStartMinute = calendar.minuteOfDay(for: startTime)
         let versionOptions = routine.routineVersionOptions(calendar: calendar)
         let selectedVersion = routine.routineVersion(for: state?.routineVersionID, calendar: calendar)
         let duration = max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
-        let startMinute = baseStartMinute + delayMinutes
+        let startMinute = baseStartMinute + delayMinutes + startMinuteOffset
         let endMinute = startMinute + duration
         let phase: RoutineNowPhase = endMinute <= currentMinute ? .missed : .next
 
+        guard startMinuteOffset == 0 || (endMinute > 0 && startMinute < ScheduleItem.minutesPerDay) else {
+            return nil
+        }
+
         return RoutineNowCandidate(
             item: routine,
+            occurrenceDate: occurrenceDate,
             phase: phase,
             status: state?.status ?? .pending,
             startMinute: startMinute,
@@ -484,7 +549,7 @@ struct TimetablePageView: View {
             selectedVersion: selectedVersion,
             versionOptions: versionOptions,
             calendar: calendar,
-            dayStart: selectedDayStart
+            dayStart: displayDayStart
         )
     }
 
@@ -507,6 +572,92 @@ struct TimetablePageView: View {
             queryRoutineStates: routineStates,
             replacing: state
         )
+    }
+
+    private func currentRoutineSegment(
+        for routine: ScheduleItem,
+        occurrenceDate: Date
+    ) -> TimelineEventSegment? {
+        guard let startTime = routine.startTime else {
+            return nil
+        }
+
+        let state = routineStates.state(for: routine, on: occurrenceDate, calendar: calendar)
+        let startMinute = calendar.minuteOfDay(for: startTime) + (state?.delayMinutes ?? 0)
+        let duration = max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
+
+        guard startMinute < ScheduleItem.minutesPerDay else {
+            return nil
+        }
+
+        return TimelineEventSegment(
+            item: routine,
+            occurrenceDate: occurrenceDate,
+            startMinute: startMinute,
+            durationMinutes: duration,
+            displayedTimeRangeText: timeRangeText(
+                startMinute: startMinute,
+                durationMinutes: duration,
+                on: occurrenceDate
+            ),
+            allowsMove: true,
+            identitySuffix: "current-\(Int(occurrenceDate.timeIntervalSince1970))"
+        )
+    }
+
+    private func carriedRoutineSegment(
+        for routine: ScheduleItem,
+        occurrenceDate: Date,
+        displayDate: Date
+    ) -> TimelineEventSegment? {
+        guard let startTime = routine.startTime else {
+            return nil
+        }
+
+        let state = routineStates.state(for: routine, on: occurrenceDate, calendar: calendar)
+        let startMinute = calendar.minuteOfDay(for: startTime) + (state?.delayMinutes ?? 0)
+        let duration = max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
+        let overflowStartMinute = startMinute - ScheduleItem.minutesPerDay
+        let overflowEndMinute = startMinute + duration - ScheduleItem.minutesPerDay
+        let visibleStartMinute = max(0, overflowStartMinute)
+        let visibleEndMinute = min(ScheduleItem.minutesPerDay, overflowEndMinute)
+        let visibleDuration = visibleEndMinute - visibleStartMinute
+
+        guard visibleDuration > 0 else {
+            return nil
+        }
+
+        return TimelineEventSegment(
+            item: routine,
+            occurrenceDate: occurrenceDate,
+            startMinute: visibleStartMinute,
+            durationMinutes: visibleDuration,
+            displayedTimeRangeText: timeRangeText(
+                startMinute: visibleStartMinute,
+                durationMinutes: visibleDuration,
+                on: displayDate
+            ),
+            allowsMove: false,
+            identitySuffix: "carryover-\(Int(occurrenceDate.timeIntervalSince1970))"
+        )
+    }
+
+    private func timeRangeText(startMinute: Int, durationMinutes: Int, on date: Date) -> String {
+        let endMinute = startMinute + max(1, durationMinutes)
+        let suffix = endMinute >= ScheduleItem.minutesPerDay ? " +1d" : ""
+
+        return "\(timeText(for: startMinute, on: date)) - \(timeText(for: endMinute, on: date))\(suffix)"
+    }
+
+    private func timeText(for minute: Int, on date: Date) -> String {
+        let normalizedMinute = ((minute % ScheduleItem.minutesPerDay) + ScheduleItem.minutesPerDay) % ScheduleItem.minutesPerDay
+        let hour = normalizedMinute / 60
+        let minute = normalizedMinute % 60
+        var components = calendar.dateComponents([.year, .month, .day], from: date)
+        components.hour = hour
+        components.minute = minute
+
+        return calendar.date(from: components)?.formatted(.dateTime.hour().minute()) ?? ""
     }
 
     private var monthGridDays: [Date?] {

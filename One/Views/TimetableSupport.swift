@@ -167,6 +167,7 @@ struct CalendarMissionSummary {
 
 struct RoutineNowCandidate: Identifiable {
     let item: ScheduleItem
+    let occurrenceDate: Date
     var phase: RoutineNowPhase
     let status: RoutineOccurrenceStatus
     let startMinute: Int
@@ -226,9 +227,9 @@ struct CalendarNowModeCard: View {
     let progress: RoutineDayProgress
     let summary: CalendarMissionSummary
     let onAddRoutine: () -> Void
-    let onDone: (ScheduleItem) -> Void
-    let onSkip: (ScheduleItem) -> Void
-    let onSelectVersion: (ScheduleItem, RoutineVersion) -> Void
+    let onDone: (ScheduleItem, Date) -> Void
+    let onSkip: (ScheduleItem, Date) -> Void
+    let onSelectVersion: (ScheduleItem, Date, RoutineVersion) -> Void
 
     @State private var versionMenuCandidate: RoutineNowCandidate?
 
@@ -256,7 +257,11 @@ struct CalendarNowModeCard: View {
             if let versionMenuCandidate {
                 ForEach(versionMenuCandidate.versionOptions) { version in
                     Button {
-                        onSelectVersion(versionMenuCandidate.item, version)
+                        onSelectVersion(
+                            versionMenuCandidate.item,
+                            versionMenuCandidate.occurrenceDate,
+                            version
+                        )
                         self.versionMenuCandidate = nil
                     } label: {
                         Label(
@@ -388,7 +393,7 @@ struct CalendarNowModeCard: View {
                     systemImage: "xmark",
                     tint: MissionTheme.danger
                 ) {
-                    onSkip(candidate.item)
+                    onSkip(candidate.item, candidate.occurrenceDate)
                 }
                 .accessibilityLabel("Mark routine as failed")
 
@@ -408,7 +413,7 @@ struct CalendarNowModeCard: View {
                     systemImage: "checkmark",
                     tint: MissionTheme.success
                 ) {
-                    onDone(candidate.item)
+                    onDone(candidate.item, candidate.occurrenceDate)
                 }
                 .accessibilityLabel("Mark routine as successful")
             }
