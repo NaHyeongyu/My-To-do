@@ -10,6 +10,7 @@ struct WidgetRoutineItem: Codable, Hashable, Identifiable {
     let title: String
     let startTimeText: String
     let endTimeText: String
+    let occurrenceDate: Date?
     let startDate: Date?
     let endDate: Date?
     let outcomeRawValue: String?
@@ -19,6 +20,7 @@ struct WidgetRoutineItem: Codable, Hashable, Identifiable {
         title: String,
         startTimeText: String,
         endTimeText: String,
+        occurrenceDate: Date? = nil,
         startDate: Date? = nil,
         endDate: Date? = nil,
         outcome: WidgetRoutineOutcome = .pending
@@ -27,6 +29,7 @@ struct WidgetRoutineItem: Codable, Hashable, Identifiable {
         self.title = title
         self.startTimeText = startTimeText
         self.endTimeText = endTimeText
+        self.occurrenceDate = occurrenceDate
         self.startDate = startDate
         self.endDate = endDate
         self.outcomeRawValue = outcome.rawValue
@@ -42,6 +45,7 @@ struct WidgetRoutineItem: Codable, Hashable, Identifiable {
             title: title,
             startTimeText: startTimeText,
             endTimeText: endTimeText,
+            occurrenceDate: occurrenceDate,
             startDate: startDate,
             endDate: endDate,
             outcome: outcome
@@ -58,6 +62,22 @@ struct WidgetRoutineItem: Codable, Hashable, Identifiable {
         }
 
         return date >= startDate
+    }
+
+    func matchesOccurrence(_ occurrenceDate: Date?, calendar: Calendar) -> Bool {
+        guard let occurrenceDate else {
+            return true
+        }
+
+        if let routineOccurrenceDate = self.occurrenceDate {
+            return calendar.isDate(routineOccurrenceDate, inSameDayAs: occurrenceDate)
+        }
+
+        if let startDate {
+            return calendar.isDate(startDate, inSameDayAs: occurrenceDate)
+        }
+
+        return false
     }
 }
 
@@ -141,16 +161,25 @@ enum WidgetSnapshotStore {
     static func updateRoutineOutcome(
         routineID: UUID,
         outcome: WidgetRoutineOutcome,
+        occurrenceDate: Date? = nil,
         at date: Date = .now,
         calendar: Calendar = .current
     ) {
         var snapshot = load()
         let commandDate: Date
 
-        if let index = snapshot.routines.firstIndex(where: { $0.id == routineID }) {
+        let matchedIndex = if occurrenceDate != nil {
+            snapshot.routines.firstIndex {
+                $0.id == routineID && $0.matchesOccurrence(occurrenceDate, calendar: calendar)
+            }
+        } else {
+            snapshot.routines.firstIndex(where: { $0.id == routineID })
+        }
+
+        if let index = matchedIndex {
             let routine = snapshot.routines[index]
             var routines = snapshot.routines
-            commandDate = routine.startDate ?? date
+            commandDate = occurrenceDate ?? routine.occurrenceDate ?? routine.startDate ?? date
             routines[index] = routine.withOutcome(outcome)
             snapshot = WidgetSnapshot(
                 generatedAt: date,

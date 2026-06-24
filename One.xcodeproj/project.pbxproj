@@ -19,6 +19,7 @@
 		B20001012C1C0001000A1001 /* ScheduleKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000012C1C0001000A1001 /* ScheduleKind.swift */; };
 		B20001022C1C0001000A1001 /* RepeatWeekday.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000022C1C0001000A1001 /* RepeatWeekday.swift */; };
 		B200010B2C1C0001000A1001 /* RoutineOccurrenceState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000B2C1C0001000A1001 /* RoutineOccurrenceState.swift */; };
+		B200010C2C1C0001000A1001 /* RoutineOccurrenceProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000C2C1C0001000A1001 /* RoutineOccurrenceProjection.swift */; };
 		B20001032C1C0001000A1001 /* AppPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000032C1C0001000A1001 /* AppPage.swift */; };
 		B20001042C1C0001000A1001 /* MissionTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000042C1C0001000A1001 /* MissionTheme.swift */; };
 		B20001052C1C0001000A1001 /* MissionViewModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000052C1C0001000A1001 /* MissionViewModifiers.swift */; };
@@ -83,6 +84,7 @@
 		B20000012C1C0001000A1001 /* ScheduleKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleKind.swift; sourceTree = "<group>"; };
 		B20000022C1C0001000A1001 /* RepeatWeekday.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepeatWeekday.swift; sourceTree = "<group>"; };
 		B200000B2C1C0001000A1001 /* RoutineOccurrenceState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineOccurrenceState.swift; sourceTree = "<group>"; };
+		B200000C2C1C0001000A1001 /* RoutineOccurrenceProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineOccurrenceProjection.swift; sourceTree = "<group>"; };
 		B20000032C1C0001000A1001 /* AppPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPage.swift; sourceTree = "<group>"; };
 		B20000042C1C0001000A1001 /* MissionTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionTheme.swift; sourceTree = "<group>"; };
 		B20000052C1C0001000A1001 /* MissionViewModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionViewModifiers.swift; sourceTree = "<group>"; };
@@ -188,6 +190,7 @@
 				B20000012C1C0001000A1001 /* ScheduleKind.swift */,
 				B20000022C1C0001000A1001 /* RepeatWeekday.swift */,
 				B200000B2C1C0001000A1001 /* RoutineOccurrenceState.swift */,
+				B200000C2C1C0001000A1001 /* RoutineOccurrenceProjection.swift */,
 				2A2F5F382C1C0001000A1001 /* TaskFiltering.swift */,
 				F10000012C210001000A1001 /* AppSettings.swift */,
 			);
@@ -373,6 +376,7 @@
 				B20001012C1C0001000A1001 /* ScheduleKind.swift in Sources */,
 				B20001022C1C0001000A1001 /* RepeatWeekday.swift in Sources */,
 				B200010B2C1C0001000A1001 /* RoutineOccurrenceState.swift in Sources */,
+				B200010C2C1C0001000A1001 /* RoutineOccurrenceProjection.swift in Sources */,
 				B20001032C1C0001000A1001 /* AppPage.swift in Sources */,
 				B20001042C1C0001000A1001 /* MissionTheme.swift in Sources */,
 				B20001052C1C0001000A1001 /* MissionViewModifiers.swift in Sources */,
@@ -541,7 +545,7 @@
 				CODE_SIGN_ENTITLEMENTS = One/One.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = One/OneMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 12;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = U9385H3C5Q;
 				DEVELOPMENT_ASSET_PATHS = "";
@@ -574,7 +578,7 @@
 				CODE_SIGN_ENTITLEMENTS = One/One.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = One/OneMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 12;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = U9385H3C5Q;
 				DEVELOPMENT_ASSET_PATHS = "";
@@ -606,7 +610,7 @@
 				CODE_SIGN_ENTITLEMENTS = OneWidgets/OneWidgets.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = OneWidgets/OneWidgetsMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 12;
 				DEVELOPMENT_TEAM = U9385H3C5Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -639,7 +643,7 @@
 				CODE_SIGN_ENTITLEMENTS = OneWidgets/OneWidgets.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = OneWidgets/OneWidgetsMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 12;
 				DEVELOPMENT_TEAM = U9385H3C5Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;

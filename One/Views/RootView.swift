@@ -421,40 +421,43 @@ struct RootView: View {
             return
         }
 
-        guard let routine = routineForWidgetOutcome() else {
+        guard let occurrence = routineForWidgetOutcome() else {
             return
         }
 
-        upsertRoutineState(for: routine, on: .now, status: status)
+        upsertRoutineState(for: occurrence.item, on: occurrence.occurrenceDate, status: status)
     }
 
-    private func routineForWidgetOutcome(now: Date = .now, calendar: Calendar = .current) -> ScheduleItem? {
+    private func routineForWidgetOutcome(now: Date = .now, calendar: Calendar = .current) -> RoutineOccurrenceProjection? {
         let today = calendar.startOfDay(for: now)
         let currentMinute = calendar.minuteOfDay(for: now)
-        let candidates: [(routine: ScheduleItem, startMinute: Int, endMinute: Int)] = items
-            .routines(on: today, routineStates: routineStates, calendar: calendar)
-            .compactMap { routine in
-                let state = routineStates.state(for: routine, on: today, calendar: calendar)
-                guard state?.isResolved != true else {
-                    return nil
-                }
-
-                let delayMinutes = state?.delayMinutes ?? 0
-                let startMinute = calendar.minuteOfDay(for: routine.startTime ?? today) + delayMinutes
-                let endMinute = startMinute + max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
-                return (routine, startMinute, endMinute)
-            }
+        let candidates = items
+            .routineOccurrenceProjections(
+                displaying: today,
+                routineStates: routineStates,
+                calendar: calendar
+            )
+            .filter { $0.state?.isResolved != true }
 
         if let active = candidates
-            .filter({ $0.startMinute <= currentMinute && currentMinute < $0.endMinute })
-            .min(by: { $0.endMinute < $1.endMinute }) {
-            return active.routine
+            .filter({
+                let startMinute = $0.displayStartMinute(on: today, calendar: calendar)
+                let endMinute = $0.displayEndMinute(on: today, calendar: calendar)
+                return startMinute <= currentMinute && currentMinute < endMinute
+            })
+            .min(by: {
+                $0.displayEndMinute(on: today, calendar: calendar)
+                    < $1.displayEndMinute(on: today, calendar: calendar)
+            }) {
+            return active
         }
 
         return candidates
-            .filter { $0.endMinute <= currentMinute }
-            .max(by: { $0.endMinute < $1.endMinute })?
-            .routine
+            .filter { $0.displayEndMinute(on: today, calendar: calendar) <= currentMinute }
+            .max(by: {
+                $0.displayEndMinute(on: today, calendar: calendar)
+                    < $1.displayEndMinute(on: today, calendar: calendar)
+            })
     }
 
     @ViewBuilder

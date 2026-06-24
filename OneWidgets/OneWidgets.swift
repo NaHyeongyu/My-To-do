@@ -24,14 +24,19 @@ private struct MarkRoutineOutcomeIntent: AppIntent {
     @Parameter(title: "Outcome")
     var outcome: String
 
+    @Parameter(title: "Occurrence Date")
+    var occurrenceTimestamp: String
+
     init() {
         routineID = ""
         outcome = WidgetRoutineOutcome.pending.rawValue
+        occurrenceTimestamp = ""
     }
 
-    init(routineID: UUID, outcome: WidgetRoutineOutcome) {
-        self.routineID = routineID.uuidString
+    init(routine: WidgetRoutineItem, outcome: WidgetRoutineOutcome) {
+        self.routineID = routine.id.uuidString
         self.outcome = outcome.rawValue
+        self.occurrenceTimestamp = routine.occurrenceDate?.timeIntervalSince1970.description ?? ""
     }
 
     func perform() async throws -> some IntentResult {
@@ -43,7 +48,14 @@ private struct MarkRoutineOutcomeIntent: AppIntent {
             return .result()
         }
 
-        WidgetSnapshotStore.updateRoutineOutcome(routineID: routineID, outcome: outcome)
+        let occurrenceDate = TimeInterval(occurrenceTimestamp).map {
+            Date(timeIntervalSince1970: $0)
+        }
+        WidgetSnapshotStore.updateRoutineOutcome(
+            routineID: routineID,
+            outcome: outcome,
+            occurrenceDate: occurrenceDate
+        )
         WidgetCenter.shared.reloadTimelines(ofKind: "RoutineCheckInWidget")
         WidgetCenter.shared.reloadTimelines(ofKind: "TodayOverviewWidget")
         return .result()
@@ -412,7 +424,7 @@ struct RoutineCheckInWidgetView: View {
 
         HStack(spacing: 8) {
             if isAvailable, let routine {
-                Button(intent: MarkRoutineOutcomeIntent(routineID: routine.id, outcome: .fail)) {
+                Button(intent: MarkRoutineOutcomeIntent(routine: routine, outcome: .fail)) {
                     actionIcon("xmark", color: .red)
                 }
                 .buttonStyle(.plain)
@@ -423,7 +435,7 @@ struct RoutineCheckInWidgetView: View {
             }
 
             if isAvailable, let routine {
-                Button(intent: MarkRoutineOutcomeIntent(routineID: routine.id, outcome: .success)) {
+                Button(intent: MarkRoutineOutcomeIntent(routine: routine, outcome: .success)) {
                     actionIcon("checkmark", color: .green)
                 }
                 .buttonStyle(.plain)

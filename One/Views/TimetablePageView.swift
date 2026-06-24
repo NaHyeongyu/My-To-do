@@ -23,30 +23,16 @@ struct TimetablePageView: View {
     private let viewModeTransitionDuration = 0.16
     private let deferredTimelineScrollDelay = 0.22
 
-    private var routines: [ScheduleItem] {
-        items.routines(on: selectedDate, routineStates: routineStates, calendar: calendar)
-    }
-
     private var routineSegments: [TimelineEventSegment] {
         let dayStart = selectedDayStart
-        let previousDay = calendar.date(byAdding: .day, value: -1, to: dayStart).map {
-            calendar.startOfDay(for: $0)
-        }
-        let carryoverSegments = previousDay.map { occurrenceDate in
-            items.routines(on: occurrenceDate, routineStates: routineStates, calendar: calendar)
-                .compactMap {
-                    carriedRoutineSegment(
-                        for: $0,
-                        occurrenceDate: occurrenceDate,
-                        displayDate: dayStart
-                    )
-                }
-        } ?? []
-        let currentSegments = routines.compactMap {
-            currentRoutineSegment(for: $0, occurrenceDate: dayStart)
-        }
 
-        return carryoverSegments + currentSegments
+        return items
+            .routineOccurrenceProjections(
+                displaying: dayStart,
+                routineStates: routineStates,
+                calendar: calendar
+            )
+            .compactMap { segment(for: $0, displayDate: dayStart) }
     }
 
     private var calendarItems: [ScheduleItem] {
@@ -118,20 +104,23 @@ struct TimetablePageView: View {
     }
 
     private var routineProgress: RoutineDayProgress {
-        let states = routines.compactMap { routineStates.state(for: $0, on: selectedDate, calendar: calendar) }
-        let doneCount = states.filter { $0.status == .done }.count
-        let skippedCount = states.filter { $0.status == .skipped }.count
-        return RoutineDayProgress(total: routines.count, done: doneCount, skipped: skippedCount)
+        let segments = routineSegments
+        let statuses = segments.map { segment in
+            routineStates.state(for: segment.item, on: segment.occurrenceDate, calendar: calendar)?.status ?? .pending
+        }
+        let doneCount = statuses.filter { $0 == .done }.count
+        let skippedCount = statuses.filter { $0 == .skipped }.count
+        return RoutineDayProgress(total: segments.count, done: doneCount, skipped: skippedCount)
     }
 
     private var missionSummary: CalendarMissionSummary {
-        let plannedMinutes = routines.reduce(0) { total, routine in
-            let state = routineStates.state(for: routine, on: selectedDate, calendar: calendar)
-            return total + routine.plannedDurationMinutes(state: state, calendar: calendar)
+        let segments = routineSegments
+        let plannedMinutes = segments.reduce(0) { total, segment in
+            total + segment.durationMinutes
         }
-        let completedMinutes = routines.reduce(0) { total, routine in
-            let state = routineStates.state(for: routine, on: selectedDate, calendar: calendar)
-            return state?.status == .done ? total + routine.plannedDurationMinutes(state: state, calendar: calendar) : total
+        let completedMinutes = segments.reduce(0) { total, segment in
+            let state = routineStates.state(for: segment.item, on: segment.occurrenceDate, calendar: calendar)
+            return state?.status == .done ? total + segment.durationMinutes : total
         }
         let openTaskCount = items
             .oneOffTasksForToday(selectedDate, calendar: calendar)
@@ -483,63 +472,36 @@ struct TimetablePageView: View {
 
     private func nowCandidates(currentMinute: Int) -> [RoutineNowCandidate] {
         let dayStart = selectedDayStart
-        let currentDayCandidates = routines.compactMap {
-            candidate(
-                for: $0,
-                occurrenceDate: dayStart,
-                displayDayStart: dayStart,
-                startMinuteOffset: 0,
-                currentMinute: currentMinute
+
+        return items
+            .routineOccurrenceProjections(
+                displaying: dayStart,
+                routineStates: routineStates,
+                calendar: calendar
             )
-        }
-        let previousDayCandidates = previousDayStart().map { occurrenceDate in
-            items.routines(on: occurrenceDate, routineStates: routineStates, calendar: calendar)
-                .compactMap {
-                    candidate(
-                        for: $0,
-                        occurrenceDate: occurrenceDate,
-                        displayDayStart: dayStart,
-                        startMinuteOffset: -ScheduleItem.minutesPerDay,
-                        currentMinute: currentMinute
-                    )
-                }
-        } ?? []
-
-        return previousDayCandidates + currentDayCandidates
-    }
-
-    private func previousDayStart() -> Date? {
-        calendar.date(byAdding: .day, value: -1, to: selectedDayStart).map(calendar.startOfDay(for:))
+            .compactMap {
+                candidate(for: $0, displayDayStart: dayStart, currentMinute: currentMinute)
+            }
     }
 
     private func candidate(
-        for routine: ScheduleItem,
-        occurrenceDate: Date,
+        for occurrence: RoutineOccurrenceProjection,
         displayDayStart: Date,
-        startMinuteOffset: Int,
         currentMinute: Int
     ) -> RoutineNowCandidate? {
-        guard let startTime = routine.startTime else {
-            return nil
-        }
-
-        let state = routineStates.state(for: routine, on: occurrenceDate, calendar: calendar)
+        let routine = occurrence.item
+        let state = occurrence.state
         let delayMinutes = state?.delayMinutes ?? 0
-        let baseStartMinute = calendar.minuteOfDay(for: startTime)
         let versionOptions = routine.routineVersionOptions(calendar: calendar)
         let selectedVersion = routine.routineVersion(for: state?.routineVersionID, calendar: calendar)
-        let duration = max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
-        let startMinute = baseStartMinute + delayMinutes + startMinuteOffset
+        let duration = occurrence.durationMinutes
+        let startMinute = occurrence.displayStartMinute(on: displayDayStart, calendar: calendar)
         let endMinute = startMinute + duration
         let phase: RoutineNowPhase = endMinute <= currentMinute ? .missed : .next
 
-        guard startMinuteOffset == 0 || (endMinute > 0 && startMinute < ScheduleItem.minutesPerDay) else {
-            return nil
-        }
-
         return RoutineNowCandidate(
             item: routine,
-            occurrenceDate: occurrenceDate,
+            occurrenceDate: occurrence.occurrenceDate,
             phase: phase,
             status: state?.status ?? .pending,
             startMinute: startMinute,
@@ -574,71 +536,40 @@ struct TimetablePageView: View {
         )
     }
 
-    private func currentRoutineSegment(
-        for routine: ScheduleItem,
-        occurrenceDate: Date
-    ) -> TimelineEventSegment? {
-        guard let startTime = routine.startTime else {
-            return nil
-        }
-
-        let state = routineStates.state(for: routine, on: occurrenceDate, calendar: calendar)
-        let startMinute = calendar.minuteOfDay(for: startTime) + (state?.delayMinutes ?? 0)
-        let duration = max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
-
-        guard startMinute < ScheduleItem.minutesPerDay else {
-            return nil
-        }
-
-        return TimelineEventSegment(
-            item: routine,
-            occurrenceDate: occurrenceDate,
-            startMinute: startMinute,
-            durationMinutes: duration,
-            displayedTimeRangeText: timeRangeText(
-                startMinute: startMinute,
-                durationMinutes: duration,
-                on: occurrenceDate
-            ),
-            allowsMove: true,
-            identitySuffix: "current-\(Int(occurrenceDate.timeIntervalSince1970))"
-        )
-    }
-
-    private func carriedRoutineSegment(
-        for routine: ScheduleItem,
-        occurrenceDate: Date,
+    private func segment(
+        for occurrence: RoutineOccurrenceProjection,
         displayDate: Date
     ) -> TimelineEventSegment? {
-        guard let startTime = routine.startTime else {
-            return nil
-        }
+        let isCurrentDayOccurrence = calendar.isDate(occurrence.occurrenceDate, inSameDayAs: displayDate)
+        let visibleWindow: RoutineOccurrenceDisplayWindow
 
-        let state = routineStates.state(for: routine, on: occurrenceDate, calendar: calendar)
-        let startMinute = calendar.minuteOfDay(for: startTime) + (state?.delayMinutes ?? 0)
-        let duration = max(5, routine.plannedDurationMinutes(state: state, calendar: calendar))
-        let overflowStartMinute = startMinute - ScheduleItem.minutesPerDay
-        let overflowEndMinute = startMinute + duration - ScheduleItem.minutesPerDay
-        let visibleStartMinute = max(0, overflowStartMinute)
-        let visibleEndMinute = min(ScheduleItem.minutesPerDay, overflowEndMinute)
-        let visibleDuration = visibleEndMinute - visibleStartMinute
+        if isCurrentDayOccurrence {
+            guard occurrence.startsBeforeNextDay else {
+                return nil
+            }
 
-        guard visibleDuration > 0 else {
+            visibleWindow = RoutineOccurrenceDisplayWindow(
+                startMinute: occurrence.startMinute,
+                durationMinutes: occurrence.durationMinutes
+            )
+        } else if let carryoverWindow = occurrence.visibleDisplayWindow(on: displayDate, calendar: calendar) {
+            visibleWindow = carryoverWindow
+        } else {
             return nil
         }
 
         return TimelineEventSegment(
-            item: routine,
-            occurrenceDate: occurrenceDate,
-            startMinute: visibleStartMinute,
-            durationMinutes: visibleDuration,
+            item: occurrence.item,
+            occurrenceDate: occurrence.occurrenceDate,
+            startMinute: visibleWindow.startMinute,
+            durationMinutes: visibleWindow.durationMinutes,
             displayedTimeRangeText: timeRangeText(
-                startMinute: visibleStartMinute,
-                durationMinutes: visibleDuration,
+                startMinute: visibleWindow.startMinute,
+                durationMinutes: visibleWindow.durationMinutes,
                 on: displayDate
             ),
-            allowsMove: false,
-            identitySuffix: "carryover-\(Int(occurrenceDate.timeIntervalSince1970))"
+            allowsMove: isCurrentDayOccurrence,
+            identitySuffix: "\(isCurrentDayOccurrence ? "current" : "carryover")-\(Int(occurrence.occurrenceDate.timeIntervalSince1970))"
         )
     }
 
