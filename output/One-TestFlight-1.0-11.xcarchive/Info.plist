@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ApplicationProperties</key>
+	<dict>
+		<key>ApplicationPath</key>
+		<string>Applications/One.app</string>
+		<key>Architectures</key>
+		<array>
+			<string>arm64</string>
+		</array>
+		<key>CFBundleIdentifier</key>
+		<string>com.onemytodo.app</string>
+		<key>CFBundleShortVersionString</key>
+		<string>1.0</string>
+		<key>CFBundleVersion</key>
+		<string>11</string>
+		<key>SigningIdentity</key>
+		<string></string>
+		<key>Team</key>
+		<string></string>
+	</dict>
+	<key>ArchiveVersion</key>
+	<integer>2</integer>
+	<key>CreationDate</key>
+	<date>2026-06-21T00:26:56Z</date>
+	<key>Distributions</key>
+	<array>
+		<dict>
+			<key>adamId</key>
+			<string>6779895126</string>
+			<key>certificateSHA1</key>
+			<string>1FC5FC662A9F9CCF8A4A47EE464256141C0FC20C</string>
+			<key>destination</key>
+			<string>upload</string>
+			<key>identifier</key>
+			<string>7897cea4-0beb-4712-ae16-c5de387164ff</string>
+			<key>preparationEvent</key>
+			<dict>
+				<key>date</key>
+				<string>2026-06-21T00:27:05Z</string>
+				<key>errors</key>
+				<array/>
+				<key>infoMessages</key>
+				<array/>
+				<key>shortTitle</key>
+				<string>Prepared</string>
+				<key>state</key>
+				<string>success</string>
+				<key>title</key>
+				<string>Prepared archive for uploading</string>
+				<key>warnings</key>
+				<array/>
+			</dict>
+			<key>providerId</key>
+			<string>93e6b7da-910f-4f23-aad2-0164f003aaf2</string>
+			<key>task</key>
+			<string>distribute</string>
+			<key>teamID</key>
+			<string>U9385H3C5Q</string>
+			<key>uploadDestination</key>
+			<string>App Store</string>
+			<key>uploadEvent</key>
+			<dict>
+				<key>date</key>
+				<string>2026-06-21T00:28:17Z</string>
+				<key>errors</key>
+				<array/>
+				<key>infoMessages</key>
+				<array/>
+				<key>shortTitle</key>
+				<string>Uploaded</string>
+				<key>state</key>
+				<string>success</string>
+				<key>title</key>
+				<string>Uploaded to Apple</string>
+				<key>warnings</key>
+				<array/>
+			</dict>
+			<key>uploadedBuildNumber</key>
+			<string>12</string>
+		</dict>
+	</array>
+	<key>Name</key>
+	<string>One</string>
+	<key>SchemeName</key>
+	<string>One</string>
+</dict>
+</plist>

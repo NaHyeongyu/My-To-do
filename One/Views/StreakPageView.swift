@@ -1368,6 +1368,8 @@ private struct StreakRoutineLabelTimeRow: View {
             TaskListPalette.primaryText
         case RoutineLabel.life.rawValue:
             TaskListPalette.primaryText
+        case RoutineLabel.move.rawValue:
+            MissionTheme.info
         case RoutineLabel.play.rawValue:
             TaskListPalette.secondaryText
         case RoutineLabel.hobby.rawValue:

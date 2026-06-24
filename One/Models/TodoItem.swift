@@ -60,6 +60,7 @@ enum RoutineLabel: String, CaseIterable, Identifiable, Hashable {
     case coding
     case work
     case life
+    case move
     case play
     case hobby
     case rest
@@ -77,6 +78,7 @@ enum RoutineLabel: String, CaseIterable, Identifiable, Hashable {
         case .coding: "Coding"
         case .work: "Work"
         case .life: "Life"
+        case .move: "Move"
         case .play: "Play"
         case .hobby: "Hobby"
         case .rest: "Rest"
@@ -94,6 +96,7 @@ enum RoutineLabel: String, CaseIterable, Identifiable, Hashable {
         case .coding: "chevron.left.forwardslash.chevron.right"
         case .work: "briefcase.fill"
         case .life: "heart.fill"
+        case .move: "figure.walk"
         case .play: "gamecontroller.fill"
         case .hobby: "paintpalette.fill"
         case .rest: "pause.circle.fill"
